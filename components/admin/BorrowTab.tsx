@@ -375,7 +375,7 @@ export default function BorrowTab() {
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">{error}</div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-2 gap-6">
         {/* ── Item picker ── */}
         <div className="card overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-100 space-y-2">

@@ -297,9 +297,9 @@ function BorrowerDrawer({
 
   return (
     <>
-      {/* Backdrop (mobile) */}
+      {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/20 z-40 lg:hidden"
+        className="fixed inset-0 bg-black/20 z-40"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -498,7 +498,7 @@ export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) =>
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-5 gap-4">
           <StatCard label="Total Items" value={items.length} color="purple"
             icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>}/>
           <StatCard label="Borrowed" value={approved.length} color="blue"
