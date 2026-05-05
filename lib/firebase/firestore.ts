@@ -243,10 +243,16 @@ export async function markReturned(
     damagePhotoUrl: damagePhotoUrl || null,
   });
 
+  const isDamaged = returnCondition === 'Damaged';
+
   for (const bi of request.items) {
     batch.update(doc(db, 'inventory', bi.itemId), {
       quantity: increment(bi.quantity),
-      status: 'Available',
+      // Damaged items are flagged Unavailable so admins must review before re-lending.
+      // Good / Fair items go back to Available.
+      status: isDamaged ? 'Unavailable' : 'Available',
+      // Update condition to reflect the state the item came back in.
+      condition: returnCondition,
       borrowedBy: null,
       borrowRequestId: null,
     });
