@@ -56,4 +56,29 @@ export interface AdminHistory {
   details: string;
 }
 
-export type TabId = 'dashboard' | 'borrow' | 'borrowed' | 'returned' | 'inventory' | 'history' | 'profile';
+export interface Vehicle {
+  id: string;
+  name: string;
+  plateNumber: string;
+  type: string;
+  year: string;
+  assignedDriver: string;
+  notes: string;
+  createdAt: Timestamp | null;
+}
+
+export interface VehicleExpense {
+  id: string;
+  vehicleId: string;
+  vehicleName: string;
+  date: string;
+  expenseType: 'Oil Change' | 'Fuel' | 'Tires' | 'Repair' | 'Registration' | 'Other';
+  cost: number;
+  odometer: string;
+  vendor: string;
+  notes: string;
+  receiptPhotoUrl: string | null;
+  createdAt: Timestamp | null;
+}
+
+export type TabId = 'dashboard' | 'borrow' | 'borrowed' | 'returned' | 'inventory' | 'history' | 'vehicle' | 'profile';

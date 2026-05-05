@@ -488,7 +488,7 @@ export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) =>
 
   return (
     <>
-      <div className={`space-y-6 max-w-6xl transition-all ${activeBorrow ? 'pr-[368px]' : ''}`}>
+      <div className={`space-y-6 w-full transition-all ${activeBorrow ? 'pr-[368px]' : ''}`}>
 
         {/* Welcome */}
         <div className="bg-purple-700 rounded-xl p-6 text-white">

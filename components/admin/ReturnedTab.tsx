@@ -71,7 +71,7 @@ export default function ReturnedTab() {
   }
 
   return (
-    <div className="max-w-6xl">
+    <div className="w-full">
       <div className="card overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 flex flex-wrap items-center gap-3">
           <h3 className="text-sm font-semibold text-gray-800 flex-1">

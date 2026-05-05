@@ -362,7 +362,7 @@ export default function BorrowTab() {
   }
 
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="w-full space-y-4">
       {success && (
         <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-3">
           <svg className="w-5 h-5 text-green-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">

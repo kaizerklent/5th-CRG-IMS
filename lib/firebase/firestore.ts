@@ -4,7 +4,14 @@ import {
   writeBatch, increment, Unsubscribe, DocumentData, QuerySnapshot,
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
-import { InventoryItem, BorrowRequest, AdminHistory, BorrowedItem } from '../types/inventory';
+import { 
+  InventoryItem, 
+  BorrowRequest, 
+  AdminHistory, 
+  BorrowedItem, 
+  Vehicle, 
+  VehicleExpense 
+} from '../types/inventory';
 
 // ─── Snapshot helpers ────────────────────────────────────────────────────────
 const toInventory = (s: QuerySnapshot<DocumentData>): InventoryItem[] =>
@@ -50,6 +57,30 @@ export function subscribeAllBorrows(cb: (reqs: BorrowRequest[]) => void): Unsubs
   );
 }
 
+// ─── Vehicle subscriptions ────────────────────────────────────────────────────
+export function subscribeVehicles(cb: (vehicles: Vehicle[]) => void): Unsubscribe {
+  return onSnapshot(
+    query(collection(db, 'vehicles'), orderBy('createdAt', 'asc')),
+    s => cb(s.docs.map(d => ({ id: d.id, ...d.data() } as Vehicle)))
+  );
+}
+
+export function subscribeVehicleExpenses(
+  vehicleId: string | null,
+  cb: (expenses: VehicleExpense[]) => void
+): Unsubscribe {
+  const q = vehicleId
+    ? query(
+        collection(db, 'vehicleExpenses'),
+        where('vehicleId', '==', vehicleId),
+        orderBy('date', 'desc')
+      )
+    : query(collection(db, 'vehicleExpenses'), orderBy('date', 'desc'));
+  return onSnapshot(q, s =>
+    cb(s.docs.map(d => ({ id: d.id, ...d.data() } as VehicleExpense)))
+  );
+}
+
 // ─── Admin history ────────────────────────────────────────────────────────────
 async function logHistory(entry: Omit<AdminHistory, 'id' | 'timestamp'>): Promise<void> {
   await addDoc(collection(db, 'adminHistory'), { ...entry, timestamp: serverTimestamp() });
@@ -80,6 +111,82 @@ export async function deleteInventoryItem(
 ): Promise<void> {
   await deleteDoc(doc(db, 'inventory', itemId));
   await logHistory({ action: 'delete', itemId, itemName, adminName, details: `Deleted: ${itemName}` });
+}
+
+// ─── Vehicle writes ───────────────────────────────────────────────────────────
+export async function addVehicle(
+  data: Omit<Vehicle, 'id' | 'createdAt'>,
+  adminName: string
+): Promise<string> {
+  const ref = await addDoc(collection(db, 'vehicles'), {
+    ...data,
+    createdAt: serverTimestamp(),
+  });
+  await logHistory({
+    action: 'add', itemId: ref.id, itemName: data.name, adminName,
+    details: `Added vehicle: ${data.name} (${data.plateNumber})`,
+  });
+  return ref.id;
+}
+
+export async function updateVehicle(
+  vehicleId: string,
+  data: Partial<Omit<Vehicle, 'id' | 'createdAt'>>,
+  adminName: string
+): Promise<void> {
+  await updateDoc(doc(db, 'vehicles', vehicleId), data as DocumentData);
+  await logHistory({
+    action: 'update', itemId: vehicleId, itemName: data.name || vehicleId, adminName,
+    details: `Updated vehicle: ${data.name || vehicleId}`,
+  });
+}
+
+export async function deleteVehicle(
+  vehicleId: string, vehicleName: string, adminName: string
+): Promise<void> {
+  await deleteDoc(doc(db, 'vehicles', vehicleId));
+  await logHistory({
+    action: 'delete', itemId: vehicleId, itemName: vehicleName, adminName,
+    details: `Deleted vehicle: ${vehicleName}`,
+  });
+}
+
+// ─── Expense writes ───────────────────────────────────────────────────────────
+export async function addVehicleExpense(
+  data: Omit<VehicleExpense, 'id' | 'createdAt'>,
+  adminName: string
+): Promise<string> {
+  const ref = await addDoc(collection(db, 'vehicleExpenses'), {
+    ...data,
+    createdAt: serverTimestamp(),
+  });
+  await logHistory({
+    action: 'add', itemId: ref.id, itemName: data.vehicleName, adminName,
+    details: `Expense logged: ${data.expenseType} ₱${data.cost.toLocaleString('en-PH')} for ${data.vehicleName}`,
+  });
+  return ref.id;
+}
+
+export async function updateVehicleExpense(
+  expenseId: string,
+  data: Partial<Omit<VehicleExpense, 'id' | 'createdAt'>>,
+  adminName: string
+): Promise<void> {
+  await updateDoc(doc(db, 'vehicleExpenses', expenseId), data as DocumentData);
+  await logHistory({
+    action: 'update', itemId: expenseId, itemName: data.vehicleName || expenseId, adminName,
+    details: `Updated expense: ${data.expenseType} for ${data.vehicleName}`,
+  });
+}
+
+export async function deleteVehicleExpense(
+  expenseId: string, vehicleName: string, expenseType: string, adminName: string
+): Promise<void> {
+  await deleteDoc(doc(db, 'vehicleExpenses', expenseId));
+  await logHistory({
+    action: 'delete', itemId: expenseId, itemName: vehicleName, adminName,
+    details: `Deleted expense: ${expenseType} for ${vehicleName}`,
+  });
 }
 
 // ─── Borrow submit ────────────────────────────────────────────────────────────

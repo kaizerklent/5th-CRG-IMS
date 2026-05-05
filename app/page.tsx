@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/firebase/AuthContext';
@@ -45,10 +46,8 @@ export default function LoginPage() {
     <div className="min-h-screen bg-purple-950 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-purple-700 mb-4 shadow-lg">
-            <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-            </svg>
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-transparent mb-4 shadow-lg overflow-hidden">
+            <Image src="/logo/639041159_928934899785899_6548860578269527636_n.png" alt="5CRG logo" width={64} height={64} className="object-cover" />
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">5CRG</h1>
           <p className="text-purple-300 text-sm mt-1">Inventory Management System</p>

@@ -1,33 +1,271 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { BorrowRequest } from '@/lib/types/inventory';
+import { BorrowRequest, AdminHistory } from '@/lib/types/inventory';
 import { subscribeAllBorrows } from '@/lib/firebase/firestore';
+import { collection, query, orderBy, onSnapshot, limit } from 'firebase/firestore';
+import { db } from '@/lib/firebase/firebaseConfig';
 
 const PER_PAGE = 10;
 
-const condBadge = (c: string|null) => {
+// ─── Shared helpers ───────────────────────────────────────────────────────────
+
+const condBadge = (c: string | null) => {
   if (!c) return <span className="text-gray-400">—</span>;
-  const m: Record<string,string> = {
-    Good:'bg-green-100 text-green-700', Fair:'bg-yellow-100 text-yellow-700', Damaged:'bg-red-100 text-red-700',
+  const m: Record<string, string> = {
+    Good: 'bg-green-100 text-green-700',
+    Fair: 'bg-yellow-100 text-yellow-700',
+    Damaged: 'bg-red-100 text-red-700',
   };
-  return <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${m[c]||'bg-gray-100 text-gray-700'}`}>{c}</span>;
+  return (
+    <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${m[c] || 'bg-gray-100 text-gray-700'}`}>
+      {c}
+    </span>
+  );
 };
 
 function Spinner() {
-  return <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
-    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-  </svg>;
+  return (
+    <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+    </svg>
+  );
 }
 
-export default function HistoryTab() {
-  const [all, setAll]       = useState<BorrowRequest[]>([]);
+// ─── Action badge for inventory log ──────────────────────────────────────────
+
+const ACTION_STYLES: Record<string, { badge: string; icon: string; iconPath: string }> = {
+  add: {
+    badge: 'bg-green-100 text-green-700',
+    icon: 'text-green-600',
+    iconPath: 'M12 4v16m8-8H4',
+  },
+  update: {
+    badge: 'bg-blue-100 text-blue-700',
+    icon: 'text-blue-600',
+    iconPath: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z',
+  },
+  delete: {
+    badge: 'bg-red-100 text-red-700',
+    icon: 'text-red-600',
+    iconPath: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16',
+  },
+};
+
+function fmtTs(ts: any): string {
+  if (!ts) return '—';
+  const d = ts?.toDate ? ts.toDate() : new Date(ts);
+  return d.toLocaleString('en-PH', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
+}
+
+// ─── Inventory Activity Log Sub-tab ──────────────────────────────────────────
+
+function InventoryActivityLog() {
+  const [logs, setLogs] = useState<AdminHistory[]>([]);
   const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState<'All'|'Approved'|'Returned'>('All');
-  const [from, setFrom]     = useState('');
-  const [to, setTo]         = useState('');
+  const [actionFilter, setActionFilter] = useState<'all' | 'add' | 'update' | 'delete'>('all');
   const [search, setSearch] = useState('');
-  const [page, setPage]     = useState(1);
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    const q = query(collection(db, 'adminHistory'), orderBy('timestamp', 'desc'), limit(500));
+    const unsub = onSnapshot(q, snap => {
+      setLogs(snap.docs.map(d => ({ id: d.id, ...d.data() } as AdminHistory)));
+      setLoading(false);
+    });
+    return () => unsub();
+  }, []);
+
+  const filtered = logs.filter(log => {
+    const matchAction = actionFilter === 'all' || log.action === actionFilter;
+    const q = search.toLowerCase();
+    const matchSearch = !q ||
+      log.itemName?.toLowerCase().includes(q) ||
+      log.details?.toLowerCase().includes(q) ||
+      log.adminName?.toLowerCase().includes(q);
+
+    // Date filter: compare log timestamp date string
+    let matchFrom = true;
+    let matchTo = true;
+    if ((from || to) && log.timestamp) {
+      const d = log.timestamp?.toDate ? log.timestamp.toDate() : new Date(log.timestamp as any);
+      const dateStr = d.toISOString().split('T')[0];
+      if (from) matchFrom = dateStr >= from;
+      if (to) matchTo = dateStr <= to;
+    }
+
+    return matchAction && matchSearch && matchFrom && matchTo;
+  });
+
+  const totalPages = Math.ceil(filtered.length / PER_PAGE);
+  const paginated = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+  const hasFilters = search || from || to || actionFilter !== 'all';
+
+  function clear() {
+    setSearch(''); setFrom(''); setTo(''); setActionFilter('all'); setPage(1);
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Filters */}
+      <div className="card px-5 py-4">
+        <div className="flex flex-wrap gap-3 items-end">
+          <div className="flex-1 min-w-[180px]">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Search</label>
+            <input
+              type="text"
+              placeholder="Item name, admin, details..."
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
+              className="input-base"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Action Type</label>
+            <select
+              value={actionFilter}
+              onChange={e => { setActionFilter(e.target.value as any); setPage(1); }}
+              className="input-base bg-white w-auto"
+            >
+              <option value="all">All Actions</option>
+              <option value="add">Added</option>
+              <option value="update">Updated</option>
+              <option value="delete">Deleted</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">From</label>
+            <input
+              type="date" value={from}
+              onChange={e => { setFrom(e.target.value); setPage(1); }}
+              className="input-base w-auto"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">To</label>
+            <input
+              type="date" value={to}
+              onChange={e => { setTo(e.target.value); setPage(1); }}
+              className="input-base w-auto"
+            />
+          </div>
+          {hasFilters && (
+            <button onClick={clear} className="btn-secondary">Clear Filters</button>
+          )}
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="card overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-800">
+            Inventory Activity Log
+            <span className="ml-2 bg-gray-100 text-gray-600 text-xs font-semibold px-2 py-0.5 rounded-full">
+              {loading ? '…' : `${filtered.length} records`}
+            </span>
+          </h3>
+          <div className="flex gap-2 text-xs">
+            {(['add', 'update', 'delete'] as const).map(a => {
+              const s = ACTION_STYLES[a];
+              return (
+                <span key={a} className={`px-2.5 py-0.5 rounded-full font-semibold capitalize ${s.badge}`}>
+                  {a}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-100 bg-gray-50">
+                {['Action', 'Item Name', 'Details', 'Performed By', 'Date & Time'].map(h => (
+                  <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-5 py-3">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={5} className="py-12 text-center">
+                    <div className="flex items-center justify-center gap-2 text-gray-400">
+                      <Spinner /><span className="text-sm">Loading records...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : paginated.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="text-center text-gray-500 py-12 text-sm">
+                    {hasFilters ? 'No records match your filters.' : 'No inventory activity yet.'}
+                  </td>
+                </tr>
+              ) : paginated.map(log => {
+                const style = ACTION_STYLES[log.action] || ACTION_STYLES.update;
+                return (
+                  <tr key={log.id} className="border-b border-gray-50 hover:bg-gray-50 transition">
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                          log.action === 'add' ? 'bg-green-100' : log.action === 'update' ? 'bg-blue-100' : 'bg-red-100'
+                        }`}>
+                          <svg className={`w-3.5 h-3.5 ${style.icon}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={style.iconPath} />
+                          </svg>
+                        </div>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full capitalize ${style.badge}`}>
+                          {log.action}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4 font-medium text-gray-800 whitespace-nowrap">{log.itemName || '—'}</td>
+                    <td className="px-5 py-4 text-gray-600 max-w-[260px]">
+                      <p className="truncate text-xs">{log.details || '—'}</p>
+                    </td>
+                    <td className="px-5 py-4 text-gray-600 whitespace-nowrap">{log.adminName || '—'}</td>
+                    <td className="px-5 py-4 text-gray-500 text-xs whitespace-nowrap">{fmtTs(log.timestamp)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {totalPages > 1 && (
+          <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
+            <p className="text-xs text-gray-500">
+              Showing {(page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, filtered.length)} of {filtered.length}
+            </p>
+            <div className="flex gap-1">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                <button key={p} onClick={() => setPage(p)}
+                  className={`w-8 h-8 rounded-lg text-xs font-medium transition ${p === page ? 'bg-purple-700 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Borrow Logbook Sub-tab ───────────────────────────────────────────────────
+
+function BorrowLogbook() {
+  const [all, setAll] = useState<BorrowRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState<'All' | 'Approved' | 'Returned'>('All');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     return subscribeAllBorrows(data => { setAll(data); setLoading(false); });
@@ -35,35 +273,43 @@ export default function HistoryTab() {
 
   const filtered = all.filter(r => {
     const q = search.toLowerCase();
-    return (status==='All' || r.status===status) &&
+    return (
+      (status === 'All' || r.status === status) &&
       (!from || r.borrowDate >= from) &&
-      (!to   || r.borrowDate <= to) &&
+      (!to || r.borrowDate <= to) &&
       (r.borrowerName.toLowerCase().includes(q) ||
-       r.items.some(i => i.itemName.toLowerCase().includes(q)));
+        r.items.some(i => i.itemName.toLowerCase().includes(q)))
+    );
   });
 
   const totalPages = Math.ceil(filtered.length / PER_PAGE);
-  const paginated  = filtered.slice((page-1)*PER_PAGE, page*PER_PAGE);
+  const paginated = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
   const hasFilters = search || from || to || status !== 'All';
 
   function clear() { setSearch(''); setFrom(''); setTo(''); setStatus('All'); setPage(1); }
 
   return (
-    <div className="max-w-6xl space-y-4">
-
+    <div className="space-y-4">
       {/* Filters */}
       <div className="card px-5 py-4">
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex-1 min-w-[180px]">
             <label className="block text-xs font-medium text-gray-600 mb-1">Search</label>
-            <input type="text" placeholder="Borrower name or item name..."
-              value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
-              className="input-base"/>
+            <input
+              type="text"
+              placeholder="Borrower name or item name..."
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1); }}
+              className="input-base"
+            />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
-            <select value={status} onChange={e => { setStatus(e.target.value as any); setPage(1); }}
-              className="input-base bg-white w-auto">
+            <select
+              value={status}
+              onChange={e => { setStatus(e.target.value as any); setPage(1); }}
+              className="input-base bg-white w-auto"
+            >
               <option value="All">All</option>
               <option value="Approved">Approved</option>
               <option value="Returned">Returned</option>
@@ -71,11 +317,11 @@ export default function HistoryTab() {
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">From</label>
-            <input type="date" value={from} onChange={e => { setFrom(e.target.value); setPage(1); }} className="input-base w-auto"/>
+            <input type="date" value={from} onChange={e => { setFrom(e.target.value); setPage(1); }} className="input-base w-auto" />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">To</label>
-            <input type="date" value={to} onChange={e => { setTo(e.target.value); setPage(1); }} className="input-base w-auto"/>
+            <input type="date" value={to} onChange={e => { setTo(e.target.value); setPage(1); }} className="input-base w-auto" />
           </div>
           {hasFilters && (
             <button onClick={clear} className="btn-secondary">Clear Filters</button>
@@ -98,27 +344,33 @@ export default function HistoryTab() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
-                {['Ref ID','Borrower','Department','Items','Borrow Date','Return Date','Status','Condition'].map(h => (
+                {['Ref ID', 'Borrower', 'Department', 'Items', 'Borrow Date', 'Return Date', 'Status', 'Condition'].map(h => (
                   <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-5 py-3">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={8} className="py-12 text-center">
-                  <div className="flex items-center justify-center gap-2 text-gray-400"><Spinner/><span className="text-sm">Loading records...</span></div>
-                </td></tr>
+                <tr>
+                  <td colSpan={8} className="py-12 text-center">
+                    <div className="flex items-center justify-center gap-2 text-gray-400">
+                      <Spinner /><span className="text-sm">Loading records...</span>
+                    </div>
+                  </td>
+                </tr>
               ) : paginated.length === 0 ? (
-                <tr><td colSpan={8} className="text-center text-gray-500 py-12 text-sm">
-                  {hasFilters ? 'No records match your filters.' : 'No borrow records yet.'}
-                </td></tr>
+                <tr>
+                  <td colSpan={8} className="text-center text-gray-500 py-12 text-sm">
+                    {hasFilters ? 'No records match your filters.' : 'No borrow records yet.'}
+                  </td>
+                </tr>
               ) : paginated.map(r => (
                 <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50 transition">
-                  <td className="px-5 py-4 font-mono text-xs text-gray-400">{r.id.slice(0,8)}…</td>
+                  <td className="px-5 py-4 font-mono text-xs text-gray-400">{r.id.slice(0, 8)}…</td>
                   <td className="px-5 py-4 font-medium text-gray-800 whitespace-nowrap">{r.borrowerName}</td>
                   <td className="px-5 py-4 text-gray-600 whitespace-nowrap">{r.borrowerDepartment}</td>
                   <td className="px-5 py-4 text-gray-600 max-w-[200px]">
-                    <p className="truncate">{r.items.map(i=>i.itemName).join(', ')}</p>
+                    <p className="truncate">{r.items.map(i => i.itemName).join(', ')}</p>
                   </td>
                   <td className="px-5 py-4 text-gray-600 whitespace-nowrap">{r.borrowDate}</td>
                   <td className="px-5 py-4 whitespace-nowrap">
@@ -127,7 +379,7 @@ export default function HistoryTab() {
                       : <span className="text-yellow-600 font-medium">Not set</span>}
                   </td>
                   <td className="px-5 py-4">
-                    <span className={r.status==='Returned'?'badge-returned':'badge-approved'}>{r.status}</span>
+                    <span className={r.status === 'Returned' ? 'badge-returned' : 'badge-approved'}>{r.status}</span>
                   </td>
                   <td className="px-5 py-4">{condBadge(r.returnCondition)}</td>
                 </tr>
@@ -138,16 +390,52 @@ export default function HistoryTab() {
 
         {totalPages > 1 && (
           <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
-            <p className="text-xs text-gray-500">Showing {(page-1)*PER_PAGE+1}–{Math.min(page*PER_PAGE,filtered.length)} of {filtered.length}</p>
+            <p className="text-xs text-gray-500">
+              Showing {(page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, filtered.length)} of {filtered.length}
+            </p>
             <div className="flex gap-1">
-              {Array.from({length:totalPages},(_,i)=>i+1).map(p => (
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
                 <button key={p} onClick={() => setPage(p)}
-                  className={`w-8 h-8 rounded-lg text-xs font-medium transition ${p===page?'bg-purple-700 text-white':'text-gray-600 hover:bg-gray-100'}`}>{p}</button>
+                  className={`w-8 h-8 rounded-lg text-xs font-medium transition ${p === page ? 'bg-purple-700 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+                  {p}
+                </button>
               ))}
             </div>
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── Root HistoryTab ──────────────────────────────────────────────────────────
+
+type SubTab = 'borrows' | 'inventory';
+
+export default function HistoryTab() {
+  const [subTab, setSubTab] = useState<SubTab>('borrows');
+
+  return (
+    <div className="w-full space-y-4">
+      {/* Sub-nav */}
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+        <button
+          onClick={() => setSubTab('borrows')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition
+            ${subTab === 'borrows' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          📋 Borrow Logbook
+        </button>
+        <button
+          onClick={() => setSubTab('inventory')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition
+            ${subTab === 'inventory' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+        >
+          🗂️ Inventory Activity
+        </button>
+      </div>
+
+      {subTab === 'borrows' ? <BorrowLogbook /> : <InventoryActivityLog />}
     </div>
   );
 }
