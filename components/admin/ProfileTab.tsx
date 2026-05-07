@@ -89,24 +89,52 @@ const DEFAULT_SETTINGS: SystemSettings = {
   itemsPerPage: 8,
 };
 
-function loadSettings(): SystemSettings {
-  try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    return raw ? { ...DEFAULT_SETTINGS, ...JSON.parse(raw) } : DEFAULT_SETTINGS;
-  } catch { return DEFAULT_SETTINGS; }
-}
+// ─── Phase 2.3 fix: safe saveSettings — wraps localStorage in try/catch ──────
+// Previously saveSettings could throw if localStorage was unavailable (e.g.
+// in a privacy-restricted environment or during SSR). Now it silently warns.
 
-function saveSettings(s: SystemSettings) {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+function saveSettings(s: SystemSettings): void {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+  } catch {
+    console.warn('5CRG IMS: Could not save settings to localStorage.');
+  }
 }
 
 // ─── System Settings section ──────────────────────────────────────────────────
 
+// ─── Phase 2.3 fix: safe localStorage initialization ─────────────────────────
+// Previously loadSettings() was called at module/render time which would crash
+// during SSR. Now all localStorage access is inside useEffect (client-only),
+// with a settingsLoaded flag to prevent a flash of default values.
+
 function SystemSettingsSection() {
   const [settings, setSettings] = useState<SystemSettings>(DEFAULT_SETTINGS);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  useEffect(() => { setSettings(loadSettings()); }, []);
+  useEffect(() => {
+    // Safe: runs only on the client after mount — never during SSR.
+    try {
+      const raw = localStorage.getItem(SETTINGS_KEY);
+      if (raw) {
+        setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(raw) });
+      }
+    } catch {
+      // localStorage unavailable — silently fall back to defaults.
+    } finally {
+      setSettingsLoaded(true);
+    }
+  }, []);
+
+  // Show a brief loading state while localStorage is being read.
+  if (!settingsLoaded) {
+    return (
+      <div className="pt-4 flex items-center gap-2 text-gray-400 text-sm">
+        <Spinner sm/> Loading settings...
+      </div>
+    );
+  }
 
   function upd<K extends keyof SystemSettings>(key: K, val: SystemSettings[K]) {
     setSettings(prev => ({ ...prev, [key]: val }));
@@ -222,9 +250,9 @@ const ACTION_STYLES: Record<string, { bg: string; text: string; icon: string }> 
 };
 
 function AuditLogSection() {
-  const [logs, setLogs]     = useState<AdminHistory[]>([]);
+  const [logs, setLogs]       = useState<AdminHistory[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'add' | 'update' | 'delete'>('all');
+  const [filter, setFilter]   = useState<'all' | 'add' | 'update' | 'delete'>('all');
 
   useEffect(() => {
     const q = query(collection(db, 'adminHistory'), orderBy('timestamp', 'desc'), limit(100));
@@ -248,7 +276,6 @@ function AuditLogSection() {
 
   return (
     <div className="pt-4 space-y-4">
-      {/* Filter pills */}
       <div className="flex gap-2 flex-wrap">
         {(['all', 'add', 'update', 'delete'] as const).map(f => (
           <button
@@ -268,7 +295,6 @@ function AuditLogSection() {
         <span className="ml-auto text-xs text-gray-400 self-center">Last 100 actions</span>
       </div>
 
-      {/* Log list */}
       <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
         {loading ? (
           <div className="flex items-center justify-center gap-2 text-gray-400 py-8">
@@ -374,34 +400,24 @@ function DataExportSection() {
 
   const exports = [
     {
-      key: 'inventory',
-      label: 'Full Inventory',
-      desc: `${inventory.length} items`,
-      color: 'purple',
+      key: 'inventory', label: 'Full Inventory', desc: `${inventory.length} items`, color: 'purple',
       icon: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4',
       action: exportInventory,
     },
     {
-      key: 'approved',
-      label: 'Active Borrows',
-      desc: `${borrows.filter(b => b.status === 'Approved').length} records`,
-      color: 'blue',
+      key: 'approved', label: 'Active Borrows',
+      desc: `${borrows.filter(b => b.status === 'Approved').length} records`, color: 'blue',
       icon: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2',
       action: () => exportBorrows('Approved'),
     },
     {
-      key: 'returned',
-      label: 'Returned Records',
-      desc: `${borrows.filter(b => b.status === 'Returned').length} records`,
-      color: 'green',
+      key: 'returned', label: 'Returned Records',
+      desc: `${borrows.filter(b => b.status === 'Returned').length} records`, color: 'green',
       icon: 'M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z',
       action: () => exportBorrows('Returned'),
     },
     {
-      key: 'all',
-      label: 'All Borrow History',
-      desc: `${borrows.length} total records`,
-      color: 'gray',
+      key: 'all', label: 'All Borrow History', desc: `${borrows.length} total records`, color: 'gray',
       icon: 'M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z',
       action: () => exportBorrows(),
     },
@@ -515,8 +531,6 @@ function AccountSecuritySection({ user }: { user: any }) {
           </div>
         ))}
       </div>
-
-      {/* Security tips */}
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
         <p className="text-xs font-semibold text-amber-800 mb-2 flex items-center gap-1.5">
           <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
@@ -535,7 +549,7 @@ function AccountSecuritySection({ user }: { user: any }) {
   );
 }
 
-// ─── Profile & Password (existing, unchanged logic) ───────────────────────────
+// ─── Profile & Password ───────────────────────────────────────────────────────
 
 function ProfileSection({ user }: { user: any }) {
   const displayName = user?.displayName || '';
@@ -589,7 +603,6 @@ function ProfileSection({ user }: { user: any }) {
 
   return (
     <>
-      {/* Avatar + name banner */}
       <div className="flex items-center gap-4 mb-6 pb-6 border-b border-gray-100">
         <div className="w-16 h-16 rounded-full bg-purple-700 flex items-center justify-center flex-shrink-0 shadow">
           <span className="text-white text-2xl font-bold">{avatar}</span>
@@ -603,7 +616,6 @@ function ProfileSection({ user }: { user: any }) {
         </div>
       </div>
 
-      {/* Edit name */}
       <form onSubmit={handleSaveName} className="space-y-4 mb-6">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Edit Profile</p>
         <div>
@@ -623,7 +635,6 @@ function ProfileSection({ user }: { user: any }) {
         </button>
       </form>
 
-      {/* Change password */}
       <form onSubmit={handleChangePw} className="space-y-4 pt-6 border-t border-gray-100">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Change Password</p>
         {pwMsg && <Alert type={pwMsg.type} msg={pwMsg.text}/>}
@@ -657,8 +668,6 @@ export default function ProfileTab() {
 
   return (
     <div className="w-full max-w-5xl mx-auto space-y-4">
-
-      {/* Top two-column layout: Profile left, Security right */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <SectionCard
           title="Profile & Password"
@@ -686,7 +695,6 @@ export default function ProfileTab() {
         </div>
       </div>
 
-      {/* Full-width bottom sections */}
       <SectionCard
         title="Data Export"
         icon="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
@@ -702,7 +710,6 @@ export default function ProfileTab() {
       >
         <AuditLogSection/>
       </SectionCard>
-
     </div>
   );
 }

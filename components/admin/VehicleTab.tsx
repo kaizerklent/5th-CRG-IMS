@@ -872,7 +872,7 @@ export default function VehicleTab() {
                     key={v.id} vehicle={v}
                     expenses={expensesForVehicle(v.id)}
                     selected={selectedVId === v.id}
-                    onSelect={() => { setSelectedVId(p => p === v.id ? null : v.id); setSubView('expenses'); }}
+                    onSelect={() => { setSelectedVId(p => p === v.id ? null : v.id); setSubView('expenses'); setPage(1); }}
                     onEdit={() => openEditVehicle(v)}
                     onDelete={() => { setDelVehicle(v); setDelErr(null); }}
                   />

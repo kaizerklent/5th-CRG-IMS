@@ -2,18 +2,20 @@ import {
   collection, doc, addDoc, updateDoc, deleteDoc,
   onSnapshot, query, where, orderBy, serverTimestamp,
   writeBatch, increment, Unsubscribe, DocumentData, QuerySnapshot,
+  getDoc, getDocs,   // Phase 2.1 + 2.2: added getDoc and getDocs
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
-import { 
-  InventoryItem, 
-  BorrowRequest, 
-  AdminHistory, 
-  BorrowedItem, 
-  Vehicle, 
-  VehicleExpense 
+import {
+  InventoryItem,
+  BorrowRequest,
+  AdminHistory,
+  BorrowedItem,
+  Vehicle,
+  VehicleExpense,
 } from '../types/inventory';
 
 // ─── Snapshot helpers ────────────────────────────────────────────────────────
+
 const toInventory = (s: QuerySnapshot<DocumentData>): InventoryItem[] =>
   s.docs.map(d => ({ id: d.id, ...d.data() } as InventoryItem));
 
@@ -21,6 +23,7 @@ const toBorrowRequests = (s: QuerySnapshot<DocumentData>): BorrowRequest[] =>
   s.docs.map(d => ({ id: d.id, ...d.data() } as BorrowRequest));
 
 // ─── Inventory subscriptions ─────────────────────────────────────────────────
+
 export function subscribeInventory(cb: (items: InventoryItem[]) => void): Unsubscribe {
   return onSnapshot(
     query(collection(db, 'inventory'), orderBy('createdAt', 'desc')),
@@ -36,6 +39,7 @@ export function subscribeAvailableInventory(cb: (items: InventoryItem[]) => void
 }
 
 // ─── Borrow request subscriptions ────────────────────────────────────────────
+
 export function subscribeActiveBorrows(cb: (reqs: BorrowRequest[]) => void): Unsubscribe {
   return onSnapshot(
     query(collection(db, 'borrowRequests'), where('status', '==', 'Approved'), orderBy('createdAt', 'desc')),
@@ -58,6 +62,7 @@ export function subscribeAllBorrows(cb: (reqs: BorrowRequest[]) => void): Unsubs
 }
 
 // ─── Vehicle subscriptions ────────────────────────────────────────────────────
+
 export function subscribeVehicles(cb: (vehicles: Vehicle[]) => void): Unsubscribe {
   return onSnapshot(
     query(collection(db, 'vehicles'), orderBy('createdAt', 'asc')),
@@ -82,18 +87,22 @@ export function subscribeVehicleExpenses(
 }
 
 // ─── Admin history ────────────────────────────────────────────────────────────
+
 async function logHistory(entry: Omit<AdminHistory, 'id' | 'timestamp'>): Promise<void> {
   await addDoc(collection(db, 'adminHistory'), { ...entry, timestamp: serverTimestamp() });
 }
 
 // ─── Inventory writes ─────────────────────────────────────────────────────────
+
 export async function addInventoryItem(
   data: Omit<InventoryItem, 'id' | 'createdAt'>,
   adminName: string
 ): Promise<string> {
   const ref = await addDoc(collection(db, 'inventory'), { ...data, createdAt: serverTimestamp() });
-  await logHistory({ action: 'add', itemId: ref.id, itemName: data.name, adminName,
-    details: `Added: ${data.name} (${data.inventoryNumber || 'no inv no.'})` });
+  await logHistory({
+    action: 'add', itemId: ref.id, itemName: data.name, adminName,
+    details: `Added: ${data.name} (${data.inventoryNumber || 'no inv no.'})`,
+  });
   return ref.id;
 }
 
@@ -114,6 +123,7 @@ export async function deleteInventoryItem(
 }
 
 // ─── Vehicle writes ───────────────────────────────────────────────────────────
+
 export async function addVehicle(
   data: Omit<Vehicle, 'id' | 'createdAt'>,
   adminName: string
@@ -141,17 +151,39 @@ export async function updateVehicle(
   });
 }
 
+// ─── Phase 2.2 — Fix vehicle delete not cleaning up expenses ─────────────────
+// Previously only deleted the vehicle document, leaving orphaned expense records
+// in Firestore. Now batch-deletes all associated expenses atomically.
+
 export async function deleteVehicle(
   vehicleId: string, vehicleName: string, adminName: string
 ): Promise<void> {
-  await deleteDoc(doc(db, 'vehicles', vehicleId));
+  const batch = writeBatch(db);
+
+  // Delete the vehicle document
+  batch.delete(doc(db, 'vehicles', vehicleId));
+
+  // Find and batch-delete all associated expense records
+  const expensesSnap = await getDocs(
+    query(collection(db, 'vehicleExpenses'), where('vehicleId', '==', vehicleId))
+  );
+  expensesSnap.forEach(expDoc => {
+    batch.delete(expDoc.ref);
+  });
+
+  await batch.commit();
+
   await logHistory({
-    action: 'delete', itemId: vehicleId, itemName: vehicleName, adminName,
-    details: `Deleted vehicle: ${vehicleName}`,
+    action: 'delete',
+    itemId: vehicleId,
+    itemName: vehicleName,
+    adminName,
+    details: `Deleted vehicle: ${vehicleName} and ${expensesSnap.size} expense record(s).`,
   });
 }
 
 // ─── Expense writes ───────────────────────────────────────────────────────────
+
 export async function addVehicleExpense(
   data: Omit<VehicleExpense, 'id' | 'createdAt'>,
   adminName: string
@@ -190,19 +222,52 @@ export async function deleteVehicleExpense(
 }
 
 // ─── Borrow submit ────────────────────────────────────────────────────────────
+
 export interface SelectedBorrowItem { item: InventoryItem; quantity: number; }
 
+// ─── Phase 2.1 — Add stock validation before batch write ─────────────────────
+// Previously a race condition could write negative quantities if two admins
+// submitted borrows for the same item simultaneously. Now validates live stock
+// from Firestore before committing, throwing descriptive errors on conflict.
+
 export async function submitBorrowRequest(
-  borrowerName: string, borrowerDepartment: string, borrowerContact: string,
+  borrowerName: string,
+  borrowerDepartment: string,
+  borrowerContact: string,
   selectedItems: SelectedBorrowItem[],
-  borrowDate: string, returnDate: string | null, notes: string
+  borrowDate: string,
+  returnDate: string | null,
+  notes: string
 ): Promise<string> {
+
+  // ── Step 1: Validate current stock against live Firestore state ──────────
+  for (const s of selectedItems) {
+    const snap = await getDoc(doc(db, 'inventory', s.item.id));
+    if (!snap.exists()) {
+      throw new Error(`"${s.item.name}" no longer exists in inventory.`);
+    }
+    const current = snap.data() as InventoryItem;
+    if (current.status === 'Unavailable') {
+      throw new Error(`"${s.item.name}" is no longer available — it may have just been borrowed.`);
+    }
+    if (!current.isUnique && current.quantity < s.quantity) {
+      throw new Error(
+        `Not enough stock for "${s.item.name}". ` +
+        `Requested: ${s.quantity}, Available: ${current.quantity}.`
+      );
+    }
+  }
+
+  // ── Step 2: All items confirmed available — proceed with batch write ─────
   const batch = writeBatch(db);
   const borrowRef = doc(collection(db, 'borrowRequests'));
 
   const items: BorrowedItem[] = selectedItems.map(s => ({
-    itemId: s.item.id, itemName: s.item.name, category: s.item.category,
-    inventoryNumber: s.item.inventoryNumber, serialNumber: s.item.serialNumber,
+    itemId: s.item.id,
+    itemName: s.item.name,
+    category: s.item.category,
+    inventoryNumber: s.item.inventoryNumber,
+    serialNumber: s.item.serialNumber,
     quantity: s.quantity,
   }));
 
@@ -210,17 +275,23 @@ export async function submitBorrowRequest(
     borrowerName, borrowerDepartment, borrowerContact, items,
     borrowDate, returnDate: returnDate || null, notes,
     status: 'Approved', createdAt: serverTimestamp(),
-    returnedAt: null, returnCondition: null, returnNotes: null, damagePhotoUrl: null,
+    returnedAt: null, returnCondition: null,
+    returnNotes: null, damagePhotoUrl: null, damagePhotoUrls: null,
   });
 
   for (const s of selectedItems) {
     const invRef = doc(db, 'inventory', s.item.id);
     if (s.item.isUnique) {
-      batch.update(invRef, { quantity: 0, status: 'Unavailable',
-        borrowedBy: borrowerName, borrowRequestId: borrowRef.id });
+      batch.update(invRef, {
+        quantity: 0, status: 'Unavailable',
+        borrowedBy: borrowerName, borrowRequestId: borrowRef.id,
+      });
     } else {
       const newQty = s.item.quantity - s.quantity;
-      batch.update(invRef, { quantity: newQty, status: newQty <= 0 ? 'Unavailable' : 'Available' });
+      batch.update(invRef, {
+        quantity: newQty,
+        status: newQty <= 0 ? 'Unavailable' : 'Available',
+      });
     }
   }
 
@@ -229,20 +300,19 @@ export async function submitBorrowRequest(
 }
 
 // ─── Mark returned ────────────────────────────────────────────────────────────
+
 export async function markReturned(
   request: BorrowRequest,
   returnCondition: 'Good' | 'Fair' | 'Damaged',
   returnNotes: string,
-  damagePhotoUrls: string[]    // now an array — first item kept in damagePhotoUrl for backward compat
+  damagePhotoUrls: string[]
 ): Promise<void> {
   const batch = writeBatch(db);
 
   batch.update(doc(db, 'borrowRequests', request.id), {
     status: 'Returned', returnedAt: serverTimestamp(),
     returnCondition, returnNotes: returnNotes || null,
-    // Keep single-url field for backward compat with ReturnedTab / HistoryTab
     damagePhotoUrl: damagePhotoUrls[0] ?? null,
-    // Full array for new multi-photo display
     damagePhotoUrls: damagePhotoUrls.length > 0 ? damagePhotoUrls : null,
   });
 
@@ -251,10 +321,7 @@ export async function markReturned(
   for (const bi of request.items) {
     batch.update(doc(db, 'inventory', bi.itemId), {
       quantity: increment(bi.quantity),
-      // Damaged items are flagged Unavailable so admins must review before re-lending.
-      // Good / Fair items go back to Available.
       status: isDamaged ? 'Unavailable' : 'Available',
-      // Update condition to reflect the state the item came back in.
       condition: returnCondition,
       borrowedBy: null,
       borrowRequestId: null,
