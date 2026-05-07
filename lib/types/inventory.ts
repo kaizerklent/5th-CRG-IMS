@@ -1,13 +1,6 @@
 import { Timestamp } from 'firebase/firestore';
 
-export interface BorrowedItem {
-  itemId: string;
-  itemName: string;
-  category: string;
-  inventoryNumber: string;
-  serialNumber: string;
-  quantity: number;
-}
+// ─── Inventory ────────────────────────────────────────────────────────────────
 
 export interface InventoryItem {
   id: string;
@@ -15,7 +8,7 @@ export interface InventoryItem {
   category: string;
   isUnique: boolean;
   quantity: number;
-  condition: 'Good' | 'Fair' | 'Damaged' | 'Under Repair';
+  condition: string;
   status: 'Available' | 'Unavailable';
   inventoryNumber: string;
   serialNumber: string;
@@ -27,6 +20,17 @@ export interface InventoryItem {
   borrowedBy: string | null;
   borrowRequestId: string | null;
   createdAt: Timestamp | null;
+}
+
+// ─── Borrow ───────────────────────────────────────────────────────────────────
+
+export interface BorrowedItem {
+  itemId: string;
+  itemName: string;
+  category: string;
+  inventoryNumber: string;
+  serialNumber: string;
+  quantity: number;
 }
 
 export interface BorrowRequest {
@@ -43,8 +47,12 @@ export interface BorrowRequest {
   returnedAt: Timestamp | null;
   returnCondition: 'Good' | 'Fair' | 'Damaged' | null;
   returnNotes: string | null;
-  damagePhotoUrl: string | null;
+  // Phase 1.1 fix: both fields present
+  damagePhotoUrl: string | null;    // keep — backward compat for old records
+  damagePhotoUrls?: string[];       // add — new multi-photo field
 }
+
+// ─── Admin History ────────────────────────────────────────────────────────────
 
 export interface AdminHistory {
   id: string;
@@ -52,9 +60,11 @@ export interface AdminHistory {
   itemId: string;
   itemName: string;
   adminName: string;
-  timestamp: Timestamp | null;
   details: string;
+  timestamp: Timestamp | null;
 }
+
+// ─── Vehicles ─────────────────────────────────────────────────────────────────
 
 export interface Vehicle {
   id: string;
@@ -72,13 +82,25 @@ export interface VehicleExpense {
   vehicleId: string;
   vehicleName: string;
   date: string;
-  expenseType: 'Oil Change' | 'Fuel' | 'Tires' | 'Repair' | 'Registration' | 'Other';
+  // Phase 1.2 fix: changed from strict union to string — free text input
+  expenseType: string;
   cost: number;
   odometer: string;
   vendor: string;
   notes: string;
-  receiptPhotoUrl: string | null;
+  receiptPhotoUrl: string | null;   // keep — backward compat for old records
+  receiptPhotoUrls?: string[];      // add — new multi-photo field
   createdAt: Timestamp | null;
 }
 
-export type TabId = 'dashboard' | 'borrow' | 'borrowed' | 'returned' | 'inventory' | 'history' | 'vehicle' | 'profile';
+// ─── Tab IDs ──────────────────────────────────────────────────────────────────
+
+export type TabId =
+  | 'dashboard'
+  | 'borrow'
+  | 'borrowed'
+  | 'returned'
+  | 'inventory'
+  | 'history'
+  | 'vehicle'
+  | 'profile';

@@ -39,11 +39,13 @@ function Spinner() {
   );
 }
 
-// ─── Resolve photo URLs (supports both old single + new array) ────────────────
+// ─── Resolve photo URLs ───────────────────────────────────────────────────────
+// Phase 1.1 fix: damagePhotoUrls is now typed on BorrowRequest — no more any cast.
 
 function resolvePhotos(req: BorrowRequest): string[] {
-  const multi = (req as any).damagePhotoUrls;
-  if (Array.isArray(multi) && multi.length > 0) return multi;
+  if (Array.isArray(req.damagePhotoUrls) && req.damagePhotoUrls.length > 0) {
+    return req.damagePhotoUrls;
+  }
   if (req.damagePhotoUrl) return [req.damagePhotoUrl];
   return [];
 }
@@ -113,8 +115,6 @@ function DamageLightbox({ urls, startIndex, itemNames, onClose }: LightboxProps)
             alt={`Damage photo ${idx + 1}`}
             className="w-full max-h-[72vh] object-contain"
           />
-
-          {/* Prev / Next */}
           {urls.length > 1 && (
             <>
               <button
@@ -186,14 +186,10 @@ function DamagePhotosCell({ req }: { req: BorrowRequest }) {
             <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
           </svg>
         </span>
-        {/* Dot indicators below the thumbnail */}
         {photos.length > 1 && (
           <div className="flex gap-0.5 justify-center mt-1">
             {photos.map((_, i) => (
-              <span
-                key={i}
-                className="w-1 h-1 rounded-full bg-red-400"
-              />
+              <span key={i} className="w-1 h-1 rounded-full bg-red-400"/>
             ))}
           </div>
         )}
