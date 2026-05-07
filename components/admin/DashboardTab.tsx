@@ -1,12 +1,12 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/lib/firebase/AuthContext';
-import { subscribeAllBorrows, subscribeInventory } from '@/lib/firebase/firestore';
-import { BorrowRequest, InventoryItem, TabId } from '@/lib/types/inventory';
+import { subscribeAllBorrows, subscribeInventory, subscribeVehicles, subscribeVehicleExpenses } from '@/lib/firebase/firestore';
+import { BorrowRequest, InventoryItem, Vehicle, VehicleExpense, TabId } from '@/lib/types/inventory';
 
 function StatCard({ label, value, color, icon }: {
-  label: string; value: number;
-  color: 'purple'|'blue'|'red'|'yellow'|'green'; icon: React.ReactNode;
+  label: string; value: number | string;
+  color: 'purple'|'blue'|'red'|'yellow'|'green'|'teal'|'orange'; icon: React.ReactNode;
 }) {
   const styles = {
     purple: { wrap: 'bg-purple-50 border-purple-200 text-purple-700', icon: 'bg-purple-100' },
@@ -14,13 +14,15 @@ function StatCard({ label, value, color, icon }: {
     red:    { wrap: 'bg-red-50 border-red-200 text-red-700',           icon: 'bg-red-100' },
     yellow: { wrap: 'bg-yellow-50 border-yellow-200 text-yellow-700', icon: 'bg-yellow-100' },
     green:  { wrap: 'bg-green-50 border-green-200 text-green-700',    icon: 'bg-green-100' },
+    teal:   { wrap: 'bg-teal-50 border-teal-200 text-teal-700',       icon: 'bg-teal-100' },
+    orange: { wrap: 'bg-orange-50 border-orange-200 text-orange-700', icon: 'bg-orange-100' },
   };
   return (
     <div className={`rounded-xl border p-5 ${styles[color].wrap}`}>
       <div className="flex items-start justify-between">
         <div>
           <p className="text-sm font-medium opacity-80">{label}</p>
-          <p className="text-3xl font-bold mt-1">{value}</p>
+          <p className={`font-bold mt-1 ${typeof value === 'string' ? 'text-2xl' : 'text-3xl'}`}>{value}</p>
         </div>
         <div className={`p-2.5 rounded-lg ${styles[color].icon}`}>{icon}</div>
       </div>
@@ -439,18 +441,24 @@ export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) =>
   const { user } = useAuth();
   const name = user?.displayName || user?.email || 'Admin';
 
-  const [borrows, setBorrows] = useState<BorrowRequest[]>([]);
-  const [items, setItems]     = useState<InventoryItem[]>([]);
-  const [loadingBorrows, setLoadingBorrows] = useState(true);
-  const [loadingItems, setLoadingItems]     = useState(true);
-  const [activeBorrow, setActiveBorrow]     = useState<BorrowRequest | null>(null);
+  const [borrows, setBorrows]   = useState<BorrowRequest[]>([]);
+  const [items, setItems]       = useState<InventoryItem[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [vExpenses, setVExpenses] = useState<VehicleExpense[]>([]);
+  const [loadingBorrows, setLoadingBorrows]   = useState(true);
+  const [loadingItems, setLoadingItems]       = useState(true);
+  const [loadingVehicles, setLoadingVehicles] = useState(true);
+  const [loadingVExp, setLoadingVExp]         = useState(true);
+  const [activeBorrow, setActiveBorrow]       = useState<BorrowRequest | null>(null);
 
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
 
   useEffect(() => {
-    const unsubBorrows   = subscribeAllBorrows(data => { setBorrows(data);  setLoadingBorrows(false); });
-    const unsubInventory = subscribeInventory(data  => { setItems(data);   setLoadingItems(false); });
-    return () => { unsubBorrows(); unsubInventory(); };
+    const unsubBorrows   = subscribeAllBorrows(data => { setBorrows(data);   setLoadingBorrows(false); });
+    const unsubInventory = subscribeInventory(data  => { setItems(data);     setLoadingItems(false); });
+    const unsubVehicles  = subscribeVehicles(data   => { setVehicles(data);  setLoadingVehicles(false); });
+    const unsubVExp      = subscribeVehicleExpenses(null, data => { setVExpenses(data); setLoadingVExp(false); });
+    return () => { unsubBorrows(); unsubInventory(); unsubVehicles(); unsubVExp(); };
   }, []);
 
   const approved      = borrows.filter(r => r.status === 'Approved');
@@ -465,7 +473,35 @@ export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) =>
   const daysOverdue = (rd: string) =>
     Math.ceil((new Date(today).getTime() - new Date(rd).getTime()) / 86400000);
 
-  const loading = loadingBorrows || loadingItems;
+  // ── Vehicle computed ──────────────────────────────────────────────────────
+  const thisMonth = today.slice(0, 7);
+
+  const fmtCurrency = (n: number) => {
+    if (n >= 1_000_000) return '₱' + (n / 1_000_000).toFixed(1) + 'M';
+    if (n >= 1_000)     return '₱' + (n / 1_000).toFixed(1) + 'k';
+    return '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const totalVehicleExpense    = vExpenses.reduce((s, e) => s + e.cost, 0);
+  const thisMonthVehicleExpense = vExpenses.filter(e => e.date.startsWith(thisMonth)).reduce((s, e) => s + e.cost, 0);
+
+  // Top expense types
+  const expenseByType = useMemo(() => {
+    const map: Record<string, number> = {};
+    vExpenses.forEach(e => { map[e.expenseType] = (map[e.expenseType] || 0) + e.cost; });
+    return Object.entries(map).sort(([, a], [, b]) => b - a).slice(0, 5);
+  }, [vExpenses]);
+
+  // Per-vehicle total
+  const expenseByVehicle = useMemo(() => {
+    return vehicles.map(v => ({
+      name: v.name,
+      plate: v.plateNumber,
+      total: vExpenses.filter(e => e.vehicleId === v.id).reduce((s, e) => s + e.cost, 0),
+    })).sort((a, b) => b.total - a.total);
+  }, [vehicles, vExpenses]);
+
+  const loading = loadingBorrows || loadingItems || loadingVehicles || loadingVExp;
 
   const borrowerBtn = (r: BorrowRequest) => (
     <button
@@ -589,6 +625,150 @@ export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) =>
                     <td className="px-6 py-4 text-gray-600">{r.borrowDate}</td>
                     <td className="px-6 py-4">{r.returnDate || <span className="text-yellow-600 font-medium">Not set</span>}</td>
                     <td className="px-6 py-4"><span className={r.status === 'Returned' ? 'badge-returned' : 'badge-approved'}>{r.status}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* ── Vehicle Section ─────────────────────────────────────────────── */}
+        <div className="flex items-center gap-3 pt-2">
+          <div className="h-px flex-1 bg-gray-200"/>
+          <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+                d="M8 17l-1.5-5.5L5 10h14l-1.5 1.5L16 17M3 17h18M5 10V8a2 2 0 012-2h10a2 2 0 012 2v2M9 17v1m6-1v1"/>
+            </svg>
+            Vehicle Overview
+          </span>
+          <div className="h-px flex-1 bg-gray-200"/>
+        </div>
+
+        {/* Vehicle stat cards */}
+        <div className="grid grid-cols-4 gap-4">
+          <StatCard
+            label="Total Vehicles" value={vehicles.length} color="teal"
+            icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 17l-1.5-5.5L5 10h14l-1.5 1.5L16 17M3 17h18M5 10V8a2 2 0 012-2h10a2 2 0 012 2v2M9 17v1m6-1v1"/></svg>}
+          />
+          <StatCard
+            label="Total Expenses" value={fmtCurrency(totalVehicleExpense)} color="purple"
+            icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>}
+          />
+          <StatCard
+            label="This Month" value={fmtCurrency(thisMonthVehicleExpense)} color="orange"
+            icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>}
+          />
+          <StatCard
+            label="Expense Records" value={vExpenses.length} color="blue"
+            icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>}
+          />
+        </div>
+
+        {/* Vehicle breakdown + recent expenses side-by-side */}
+        <div className="grid grid-cols-2 gap-4">
+
+          {/* Per-vehicle cost bars */}
+          <div className="card p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-gray-800">Cost by Vehicle</h3>
+              <button onClick={() => onNavigate('vehicle')} className="text-xs text-purple-700 font-medium hover:underline">View all →</button>
+            </div>
+            {expenseByVehicle.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-6">No expense data yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {expenseByVehicle.map((v, idx) => {
+                  const pct = totalVehicleExpense > 0 ? (v.total / totalVehicleExpense) * 100 : 0;
+                  const bars = ['bg-teal-500','bg-purple-500','bg-blue-500','bg-orange-500','bg-pink-500'];
+                  return (
+                    <div key={v.name}>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-sm font-medium text-gray-800 truncate">{v.name}</span>
+                          <span className="text-xs text-gray-400 font-mono flex-shrink-0">{v.plate}</span>
+                        </div>
+                        <span className="text-xs font-semibold text-gray-700 flex-shrink-0 ml-2">
+                          {fmtCurrency(v.total)}
+                        </span>
+                      </div>
+                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${bars[idx % bars.length]}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Top expense types */}
+          <div className="card p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-gray-800">Top Expense Types</h3>
+              <span className="text-xs text-gray-400">All vehicles</span>
+            </div>
+            {expenseByType.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-6">No expense data yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {expenseByType.map(([type, amount], idx) => {
+                  const pct = totalVehicleExpense > 0 ? (amount / totalVehicleExpense) * 100 : 0;
+                  const bars = ['bg-amber-500','bg-blue-500','bg-green-500','bg-red-500','bg-indigo-500'];
+                  return (
+                    <div key={type}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium text-gray-800">{type}</span>
+                        <span className="text-xs text-gray-500">{fmtCurrency(amount)} · {pct.toFixed(0)}%</span>
+                      </div>
+                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${bars[idx % bars.length]}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Recent vehicle expenses table */}
+        <div className="card overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-gray-800">Recent Vehicle Expenses</h3>
+            <button onClick={() => onNavigate('vehicle')} className="text-sm text-purple-700 font-medium hover:underline">View all →</button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50">
+                  {['Date','Vehicle','Expense Type','Cost','Vendor'].map(h => (
+                    <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-6 py-3">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {vExpenses.length === 0 ? (
+                  <tr><td colSpan={5} className="text-center text-gray-500 py-8 text-sm">No vehicle expenses yet.</td></tr>
+                ) : vExpenses.slice(0, 5).map(e => (
+                  <tr key={e.id} className="border-b border-gray-50 hover:bg-gray-50 transition">
+                    <td className="px-6 py-3.5 text-gray-600 whitespace-nowrap">{e.date}</td>
+                    <td className="px-6 py-3.5 font-medium text-gray-800">{e.vehicleName}</td>
+                    <td className="px-6 py-3.5">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700">
+                        {e.expenseType}
+                      </span>
+                    </td>
+                    <td className="px-6 py-3.5 font-semibold text-gray-800 whitespace-nowrap">
+                      ₱{e.cost.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="px-6 py-3.5 text-gray-600">{e.vendor || '—'}</td>
                   </tr>
                 ))}
               </tbody>

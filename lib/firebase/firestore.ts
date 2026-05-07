@@ -233,14 +233,17 @@ export async function markReturned(
   request: BorrowRequest,
   returnCondition: 'Good' | 'Fair' | 'Damaged',
   returnNotes: string,
-  damagePhotoUrl: string | null
+  damagePhotoUrls: string[]    // now an array — first item kept in damagePhotoUrl for backward compat
 ): Promise<void> {
   const batch = writeBatch(db);
 
   batch.update(doc(db, 'borrowRequests', request.id), {
     status: 'Returned', returnedAt: serverTimestamp(),
     returnCondition, returnNotes: returnNotes || null,
-    damagePhotoUrl: damagePhotoUrl || null,
+    // Keep single-url field for backward compat with ReturnedTab / HistoryTab
+    damagePhotoUrl: damagePhotoUrls[0] ?? null,
+    // Full array for new multi-photo display
+    damagePhotoUrls: damagePhotoUrls.length > 0 ? damagePhotoUrls : null,
   });
 
   const isDamaged = returnCondition === 'Damaged';

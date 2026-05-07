@@ -173,6 +173,7 @@ export default function InventoryTab() {
   const [delName, setDelName]       = useState('');
   const [deleting, setDeleting]     = useState(false);
   const [delErr, setDelErr]         = useState<string|null>(null);
+  const [delPhase, setDelPhase]     = useState<'warn'|'done'>('warn');
   const [saving, setSaving]         = useState(false);
   const [saveErr, setSaveErr]       = useState<string|null>(null);
   const [showSticker, setShowSticker] = useState(false);
@@ -209,7 +210,7 @@ export default function InventoryTab() {
     setSelItem(item); setSaveErr(null); setShowSticker(false); setModal('edit');
   }
   function openView(item: InventoryItem) { setSelItem(item); setModal('view'); }
-  function openDelete(item: InventoryItem) { setDelId(item.id); setDelName(item.name); setDelErr(null); }
+  function openDelete(item: InventoryItem) { setDelId(item.id); setDelName(item.name); setDelErr(null); setDelPhase('warn'); }
 
   function upd(key: keyof FormData, val: any) {
     setForm(prev => {
@@ -237,7 +238,11 @@ export default function InventoryTab() {
 
   async function handleDelete(id: string, name: string) {
     setDeleting(true); setDelErr(null);
-    try { await deleteInventoryItem(id, name, adminName); setDelId(null); }
+    try {
+      await deleteInventoryItem(id, name, adminName);
+      setDelPhase('done');
+      setTimeout(() => { setDelId(null); setDelPhase('warn'); }, 1500);
+    }
     catch { setDelErr('Failed to delete. Please try again.'); }
     finally { setDeleting(false); }
   }
@@ -642,23 +647,51 @@ export default function InventoryTab() {
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4"
           role="dialog" aria-modal="true" aria-label="Delete item confirmation">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
-            <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
-              <svg className="w-6 h-6 text-red-600" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold text-gray-800 mb-1">Delete Item?</h3>
-            <p className="text-sm text-gray-600 mb-1 font-medium">"{delName}"</p>
-            <p className="text-sm text-gray-500 mb-4">This cannot be undone.</p>
-            {delErr && (
-              <div role="alert" className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{delErr}</div>
+
+            {delPhase === 'done' ? (
+              /* ── Success state ── */
+              <>
+                <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-7 h-7 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/>
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-gray-800 mb-1">Deleted</h3>
+                <p className="text-sm text-gray-500">"{delName}" has been removed.</p>
+              </>
+            ) : (
+              /* ── Warning / confirm state ── */
+              <>
+                <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-6 h-6 text-red-600" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-gray-800 mb-1">Delete Item?</h3>
+                <p className="text-sm text-gray-600 mb-3 font-medium">"{delName}"</p>
+
+                {/* Warning banner */}
+                <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 text-left flex gap-3">
+                  <svg className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
+                  </svg>
+                  <div>
+                    <p className="text-xs font-semibold text-amber-800 mb-0.5">Warning — this cannot be undone</p>
+                    <p className="text-xs text-amber-700">This item will be permanently removed from the inventory. Any borrow history referencing it will remain but the item itself cannot be recovered.</p>
+                  </div>
+                </div>
+
+                {delErr && (
+                  <div role="alert" className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{delErr}</div>
+                )}
+                <div className="flex gap-3">
+                  <button onClick={() => { setDelId(null); setDelErr(null); }} disabled={deleting} className="btn-secondary flex-1">Cancel</button>
+                  <button onClick={() => handleDelete(delId, delName)} disabled={deleting} className="btn-danger flex-1">
+                    {deleting ? <><Spinner/> Deleting...</> : 'Yes, Delete'}
+                  </button>
+                </div>
+              </>
             )}
-            <div className="flex gap-3">
-              <button onClick={() => { setDelId(null); setDelErr(null); }} disabled={deleting} className="btn-secondary flex-1">Cancel</button>
-              <button onClick={() => handleDelete(delId, delName)} disabled={deleting} className="btn-danger flex-1">
-                {deleting ? <><Spinner/> Deleting...</> : 'Delete'}
-              </button>
-            </div>
           </div>
         </div>
       )}

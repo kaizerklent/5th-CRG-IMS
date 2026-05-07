@@ -32,7 +32,169 @@ function Spinner() {
   );
 }
 
-// ─── Action badge for inventory log ──────────────────────────────────────────
+// ─── Resolve photo URLs (supports both old single + new array) ────────────────
+
+function resolvePhotos(req: BorrowRequest): string[] {
+  const multi = (req as any).damagePhotoUrls;
+  if (Array.isArray(multi) && multi.length > 0) return multi;
+  if (req.damagePhotoUrl) return [req.damagePhotoUrl];
+  return [];
+}
+
+// ─── Damage Lightbox ──────────────────────────────────────────────────────────
+
+interface LightboxProps {
+  urls: string[];
+  startIndex: number;
+  itemNames: string;
+  onClose: () => void;
+}
+
+function DamageLightbox({ urls, startIndex, itemNames, onClose }: LightboxProps) {
+  const [idx, setIdx] = useState(startIndex);
+
+  function prev() { setIdx(i => (i - 1 + urls.length) % urls.length); }
+  function next() { setIdx(i => (i + 1) % urls.length); }
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape')      onClose();
+      if (e.key === 'ArrowLeft')   prev();
+      if (e.key === 'ArrowRight')  next();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [urls.length]);
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/85 flex items-center justify-center z-50 p-4"
+      onClick={onClose}
+    >
+      <div className="relative w-full max-w-2xl flex flex-col" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="bg-red-600 text-white px-4 py-3 rounded-t-xl flex items-center gap-3">
+          <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
+          </svg>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold">Damage Report Photo{urls.length > 1 ? 's' : ''}</p>
+            <p className="text-xs text-red-200 truncate">{itemNames}</p>
+          </div>
+          {urls.length > 1 && (
+            <span className="text-xs text-red-200 font-medium flex-shrink-0">{idx + 1} / {urls.length}</span>
+          )}
+          <button
+            onClick={onClose}
+            className="w-7 h-7 bg-red-700 hover:bg-red-800 rounded-lg flex items-center justify-center transition flex-shrink-0"
+          >
+            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* Image */}
+        <div className="relative bg-gray-900 rounded-b-xl overflow-hidden">
+          <img
+            src={urls[idx]}
+            alt={`Damage photo ${idx + 1}`}
+            className="w-full max-h-[72vh] object-contain"
+          />
+          {urls.length > 1 && (
+            <>
+              <button
+                onClick={prev}
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/50 hover:bg-black/75 rounded-full flex items-center justify-center transition"
+              >
+                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/>
+                </svg>
+              </button>
+              <button
+                onClick={next}
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/50 hover:bg-black/75 rounded-full flex items-center justify-center transition"
+              >
+                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/>
+                </svg>
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* Dot indicators */}
+        {urls.length > 1 && (
+          <div className="flex gap-2 mt-3 justify-center">
+            {urls.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setIdx(i)}
+                aria-label={`Go to photo ${i + 1}`}
+                className={`rounded-full transition-all duration-200 ${
+                  i === idx
+                    ? 'w-2.5 h-2.5 bg-white'
+                    : 'w-2 h-2 bg-white/40 hover:bg-white/70'
+                }`}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+// ─── Full multi-photo cell used in the Borrow Logbook table ──────────────────
+
+function DamagePhotosCellFull({ req }: { req: BorrowRequest }) {
+  const [lightbox, setLightbox] = useState<{ startIdx: number } | null>(null);
+  const photos    = resolvePhotos(req);
+  const itemNames = req.items.map(i => i.itemName).join(', ');
+
+  if (photos.length === 0) return <span className="text-gray-300 text-xs">—</span>;
+
+  return (
+    <>
+      <button
+        onClick={() => setLightbox({ startIdx: 0 })}
+        className="relative flex-shrink-0 group"
+        title={photos.length > 1 ? `View ${photos.length} damage photos` : 'View damage photo'}
+      >
+        <img
+          src={photos[0]}
+          alt="Damage photo"
+          className="w-11 h-11 object-cover rounded-lg ring-2 ring-red-200 group-hover:ring-red-400 transition"
+        />
+        <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
+          <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
+          </svg>
+        </span>
+        {/* Dot indicators below the thumbnail */}
+        {photos.length > 1 && (
+          <div className="flex gap-0.5 justify-center mt-1">
+            {photos.map((_, i) => (
+              <span
+                key={i}
+                className="w-1 h-1 rounded-full bg-red-400"
+              />
+            ))}
+          </div>
+        )}
+      </button>
+      {lightbox && (
+        <DamageLightbox
+          urls={photos}
+          startIndex={lightbox.startIdx}
+          itemNames={itemNames}
+          onClose={() => setLightbox(null)}
+        />
+      )}
+    </>
+  );
+}
 
 const ACTION_STYLES: Record<string, { badge: string; icon: string; iconPath: string }> = {
   add: {
@@ -262,6 +424,7 @@ function BorrowLogbook() {
   const [all, setAll] = useState<BorrowRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<'All' | 'Approved' | 'Returned'>('All');
+  const [condFilter, setCondFilter] = useState<'All' | 'Good' | 'Fair' | 'Damaged'>('All');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [search, setSearch] = useState('');
@@ -273,8 +436,10 @@ function BorrowLogbook() {
 
   const filtered = all.filter(r => {
     const q = search.toLowerCase();
+    const matchCond = condFilter === 'All' || r.returnCondition === condFilter;
     return (
       (status === 'All' || r.status === status) &&
+      matchCond &&
       (!from || r.borrowDate >= from) &&
       (!to || r.borrowDate <= to) &&
       (r.borrowerName.toLowerCase().includes(q) ||
@@ -284,12 +449,39 @@ function BorrowLogbook() {
 
   const totalPages = Math.ceil(filtered.length / PER_PAGE);
   const paginated = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
-  const hasFilters = search || from || to || status !== 'All';
+  const hasFilters = search || from || to || status !== 'All' || condFilter !== 'All';
+  const damagedCount = all.filter(r => r.returnCondition === 'Damaged').length;
 
-  function clear() { setSearch(''); setFrom(''); setTo(''); setStatus('All'); setPage(1); }
+  function clear() { setSearch(''); setFrom(''); setTo(''); setStatus('All'); setCondFilter('All'); setPage(1); }
 
   return (
     <div className="space-y-4">
+
+      {/* Damaged items alert banner */}
+      {damagedCount > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-red-100 rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg className="w-5 h-5 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-red-800">
+                {damagedCount} item{damagedCount !== 1 ? 's' : ''} returned damaged
+              </p>
+              <p className="text-xs text-red-600 mt-0.5">These items are marked Unavailable in inventory until reviewed.</p>
+            </div>
+          </div>
+          <button
+            onClick={() => { setCondFilter('Damaged'); setStatus('Returned'); setPage(1); }}
+            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg transition flex-shrink-0"
+          >
+            Show Damaged Only
+          </button>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="card px-5 py-4">
         <div className="flex flex-wrap gap-3 items-end">
@@ -316,6 +508,19 @@ function BorrowLogbook() {
             </select>
           </div>
           <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Return Condition</label>
+            <select
+              value={condFilter}
+              onChange={e => { setCondFilter(e.target.value as any); setPage(1); }}
+              className="input-base bg-white w-auto"
+            >
+              <option value="All">All Conditions</option>
+              <option value="Good">Good</option>
+              <option value="Fair">Fair</option>
+              <option value="Damaged">Damaged</option>
+            </select>
+          </div>
+          <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">From</label>
             <input type="date" value={from} onChange={e => { setFrom(e.target.value); setPage(1); }} className="input-base w-auto" />
           </div>
@@ -331,20 +536,28 @@ function BorrowLogbook() {
 
       {/* Table */}
       <div className="card overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100">
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-gray-800">
             Borrow Logbook
             <span className="ml-2 bg-gray-100 text-gray-600 text-xs font-semibold px-2 py-0.5 rounded-full">
               {loading ? '…' : `${filtered.length} records`}
             </span>
           </h3>
+          {condFilter === 'Damaged' && (
+            <span className="text-xs font-semibold text-red-700 bg-red-100 px-2.5 py-1 rounded-full flex items-center gap-1">
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
+              </svg>
+              Showing damaged items only
+            </span>
+          )}
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
-                {['Ref ID', 'Borrower', 'Department', 'Items', 'Borrow Date', 'Return Date', 'Status', 'Condition'].map(h => (
+                {['Ref ID', 'Borrower', 'Department', 'Items', 'Borrow Date', 'Return Date', 'Status', 'Condition', 'Damage Photos'].map(h => (
                   <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-5 py-3">{h}</th>
                 ))}
               </tr>
@@ -352,7 +565,7 @@ function BorrowLogbook() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center">
+                  <td colSpan={9} className="py-12 text-center">
                     <div className="flex items-center justify-center gap-2 text-gray-400">
                       <Spinner /><span className="text-sm">Loading records...</span>
                     </div>
@@ -360,12 +573,15 @@ function BorrowLogbook() {
                 </tr>
               ) : paginated.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center text-gray-500 py-12 text-sm">
+                  <td colSpan={9} className="text-center text-gray-500 py-12 text-sm">
                     {hasFilters ? 'No records match your filters.' : 'No borrow records yet.'}
                   </td>
                 </tr>
               ) : paginated.map(r => (
-                <tr key={r.id} className="border-b border-gray-50 hover:bg-gray-50 transition">
+                <tr
+                  key={r.id}
+                  className={`border-b border-gray-50 hover:bg-gray-50 transition ${r.returnCondition === 'Damaged' ? 'bg-red-50/40' : ''}`}
+                >
                   <td className="px-5 py-4 font-mono text-xs text-gray-400">{r.id.slice(0, 8)}…</td>
                   <td className="px-5 py-4 font-medium text-gray-800 whitespace-nowrap">{r.borrowerName}</td>
                   <td className="px-5 py-4 text-gray-600 whitespace-nowrap">{r.borrowerDepartment}</td>
@@ -382,6 +598,9 @@ function BorrowLogbook() {
                     <span className={r.status === 'Returned' ? 'badge-returned' : 'badge-approved'}>{r.status}</span>
                   </td>
                   <td className="px-5 py-4">{condBadge(r.returnCondition)}</td>
+                  <td className="px-5 py-4">
+                    <DamagePhotosCellFull req={r} />
+                  </td>
                 </tr>
               ))}
             </tbody>
