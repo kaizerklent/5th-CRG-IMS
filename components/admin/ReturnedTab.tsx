@@ -2,8 +2,7 @@
 import { useState, useEffect } from 'react';
 import { BorrowRequest } from '@/lib/types/inventory';
 import { subscribeReturnedBorrows } from '@/lib/firebase/firestore';
-
-const PER_PAGE = 8;
+import { useSystemSettings } from '@/lib/hooks/useSystemSettings';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -39,13 +38,11 @@ function Spinner() {
   );
 }
 
-// ─── Resolve photo URLs ───────────────────────────────────────────────────────
-// Phase 1.1 fix: damagePhotoUrls is now typed on BorrowRequest — no more any cast.
+// ─── Resolve photo URLs (supports both old single + new array) ────────────────
 
 function resolvePhotos(req: BorrowRequest): string[] {
-  if (Array.isArray(req.damagePhotoUrls) && req.damagePhotoUrls.length > 0) {
-    return req.damagePhotoUrls;
-  }
+  const multi = (req as any).damagePhotoUrls;
+  if (Array.isArray(multi) && multi.length > 0) return multi;
   if (req.damagePhotoUrl) return [req.damagePhotoUrl];
   return [];
 }
@@ -137,18 +134,15 @@ function DamageLightbox({ urls, startIndex, itemNames, onClose }: LightboxProps)
           )}
         </div>
 
-        {/* Dot indicators */}
+        {/* Dot indicators in lightbox footer */}
         {urls.length > 1 && (
-          <div className="flex gap-2 mt-3 justify-center">
+          <div className="flex items-center gap-1.5 justify-center mt-3">
             {urls.map((_, i) => (
               <button
                 key={i}
                 onClick={() => setIdx(i)}
-                aria-label={`Go to photo ${i + 1}`}
                 className={`rounded-full transition-all duration-200 ${
-                  i === idx
-                    ? 'w-2.5 h-2.5 bg-white'
-                    : 'w-2 h-2 bg-white/40 hover:bg-white/70'
+                  i === idx ? 'w-4 h-2.5 bg-red-400' : 'w-2.5 h-2.5 bg-white/40 hover:bg-white/70'
                 }`}
               />
             ))}
@@ -159,48 +153,106 @@ function DamageLightbox({ urls, startIndex, itemNames, onClose }: LightboxProps)
   );
 }
 
-// ─── Damage Photos Cell ───────────────────────────────────────────────────────
+// ─── Inline Damage Photo Carousel Cell ───────────────────────────────────────
+// Shows ONE photo at a time in the table cell — no crowding.
+// Dot indicators + hover prev/next let user cycle through all photos inline.
+// Clicking the photo opens the full lightbox.
 
 function DamagePhotosCell({ req }: { req: BorrowRequest }) {
-  const [lightbox, setLightbox] = useState<{ startIdx: number } | null>(null);
-  const photos = resolvePhotos(req);
+  const photos    = resolvePhotos(req);
+  const itemNames = req.items.map(i => i.itemName).join(', ');
+  const [idx, setIdx]           = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
 
   if (photos.length === 0) return <span className="text-gray-300 text-xs">—</span>;
 
-  const itemNames = req.items.map(i => i.itemName).join(', ');
+  const prev = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIdx(i => (i - 1 + photos.length) % photos.length);
+  };
+  const next = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIdx(i => (i + 1) % photos.length);
+  };
 
   return (
     <>
-      <button
-        onClick={() => setLightbox({ startIdx: 0 })}
-        className="relative flex-shrink-0 group"
-        title={photos.length > 1 ? `View ${photos.length} damage photos` : 'View damage photo'}
-      >
-        <img
-          src={photos[0]}
-          alt="Damage photo"
-          className="w-11 h-11 object-cover rounded-lg ring-2 ring-red-200 group-hover:ring-red-400 transition"
-        />
-        <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center">
-          <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
-          </svg>
-        </span>
+      <div className="flex flex-col items-start gap-1.5" style={{ minWidth: 80 }}>
+
+        {/* Photo thumbnail with prev/next arrows on hover */}
+        <div className="relative group w-16 h-16 flex-shrink-0">
+          <button
+            onClick={() => setLightboxOpen(true)}
+            className="w-full h-full block rounded-xl overflow-hidden ring-2 ring-red-200 hover:ring-red-400 transition focus:outline-none"
+            title="Click to view full size"
+          >
+            <img
+              src={photos[idx]}
+              alt={`Damage ${idx + 1}`}
+              className="w-full h-full object-cover"
+            />
+          </button>
+
+          {/* Red damage badge */}
+          <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center pointer-events-none z-10">
+            <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
+            </svg>
+          </span>
+
+          {/* Prev / Next arrows — appear on hover, only when multiple photos */}
+          {photos.length > 1 && (
+            <>
+              <button
+                onClick={prev}
+                className="absolute left-0.5 top-1/2 -translate-y-1/2 w-5 h-5 bg-black/60 hover:bg-black/80 rounded-full flex items-center justify-center transition opacity-0 group-hover:opacity-100 z-10"
+              >
+                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7"/>
+                </svg>
+              </button>
+              <button
+                onClick={next}
+                className="absolute right-0.5 top-1/2 -translate-y-1/2 w-5 h-5 bg-black/60 hover:bg-black/80 rounded-full flex items-center justify-center transition opacity-0 group-hover:opacity-100 z-10"
+              >
+                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7"/>
+                </svg>
+              </button>
+            </>
+          )}
+        </div>
+
+        {/* Dot indicators */}
         {photos.length > 1 && (
-          <div className="flex gap-0.5 justify-center mt-1">
+          <div className="flex items-center gap-1 justify-center w-16">
             {photos.map((_, i) => (
-              <span key={i} className="w-1 h-1 rounded-full bg-red-400"/>
+              <button
+                key={i}
+                onClick={e => { e.stopPropagation(); setIdx(i); }}
+                title={`Photo ${i + 1}`}
+                className={`rounded-full transition-all duration-200 flex-shrink-0 ${
+                  i === idx
+                    ? 'w-3 h-2 bg-red-500'
+                    : 'w-2 h-2 bg-gray-300 hover:bg-red-300'
+                }`}
+              />
             ))}
           </div>
         )}
-      </button>
 
-      {lightbox && (
+        {/* Count label */}
+        {photos.length > 1 && (
+          <span className="text-xs text-gray-400 leading-none">{idx + 1}/{photos.length} photos</span>
+        )}
+      </div>
+
+      {lightboxOpen && (
         <DamageLightbox
           urls={photos}
-          startIndex={lightbox.startIdx}
+          startIndex={idx}
           itemNames={itemNames}
-          onClose={() => setLightbox(null)}
+          onClose={() => setLightboxOpen(false)}
         />
       )}
     </>
@@ -210,6 +262,8 @@ function DamagePhotosCell({ req }: { req: BorrowRequest }) {
 // ─── Main ReturnedTab ─────────────────────────────────────────────────────────
 
 export default function ReturnedTab() {
+  const settings = useSystemSettings();
+  const PER_PAGE = settings.itemsPerPage;
   const [all, setAll]           = useState<BorrowRequest[]>([]);
   const [loading, setLoading]   = useState(true);
   const [monthFilter, setMonth] = useState('All');

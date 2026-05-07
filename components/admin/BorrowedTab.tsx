@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useRef, useCallback, DragEvent, ChangeEve
 import { BorrowRequest } from '@/lib/types/inventory';
 import { subscribeActiveBorrows, markReturned } from '@/lib/firebase/firestore';
 import { uploadToCloudinary } from '@/lib/cloudinary';
+import { useSystemSettings } from '@/lib/hooks/useSystemSettings';
 
 const PER_PAGE = 8;
 
@@ -368,6 +369,9 @@ function ReturnModal({ req, onClose, onConfirm }: {
 // ─── BorrowedTab ──────────────────────────────────────────────────────────────
 
 export default function BorrowedTab() {
+  const settings = useSystemSettings();
+  const PER_PAGE = settings.itemsPerPage;
+
   const [requests, setRequests]   = useState<BorrowRequest[]>([]);
   const [loading, setLoading]     = useState(true);
   const [page, setPage]           = useState(1);
@@ -375,7 +379,14 @@ export default function BorrowedTab() {
 
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
 
-  const flag     = (rd: string | null) => !rd ? 'no-date' : rd < today ? 'overdue' : 'normal';
+  const flag = (rd: string | null) => {
+    if (!rd) return 'no-date';
+    // Apply grace period threshold before flagging as overdue
+    const due = new Date(rd);
+    due.setDate(due.getDate() + settings.overdueThresholdDays);
+    return due < new Date(today) ? 'overdue' : 'normal';
+  };
+
   const daysOver = (rd: string) =>
     Math.ceil((new Date(today).getTime() - new Date(rd).getTime()) / 86400000);
 

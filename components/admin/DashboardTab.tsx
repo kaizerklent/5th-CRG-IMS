@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/lib/firebase/AuthContext';
 import { subscribeAllBorrows, subscribeInventory, subscribeVehicles, subscribeVehicleExpenses } from '@/lib/firebase/firestore';
 import { BorrowRequest, InventoryItem, Vehicle, VehicleExpense, TabId } from '@/lib/types/inventory';
+import { useSystemSettings } from '@/lib/hooks/useSystemSettings';
 
 function StatCard({ label, value, color, icon }: {
   label: string; value: number | string;
@@ -440,6 +441,7 @@ function BorrowerDrawer({
 export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) => void }) {
   const { user } = useAuth();
   const name = user?.displayName || user?.email || 'Admin';
+  const settings = useSystemSettings();
 
   const [borrows, setBorrows]   = useState<BorrowRequest[]>([]);
   const [items, setItems]       = useState<InventoryItem[]>([]);
@@ -462,7 +464,12 @@ export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) =>
   }, []);
 
   const approved      = borrows.filter(r => r.status === 'Approved');
-  const overdue       = approved.filter(r => r.returnDate && r.returnDate < today);
+  const overdue       = approved.filter(r => {
+    if (!r.returnDate) return false;
+    const due = new Date(r.returnDate);
+    due.setDate(due.getDate() + settings.overdueThresholdDays);
+    return due < new Date(today);
+  });
   const noDueDate     = approved.filter(r => !r.returnDate);
   const returnedToday = borrows.filter(r => {
     if (r.status !== 'Returned' || !r.returnedAt) return false;
@@ -547,8 +554,8 @@ export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) =>
             icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>}/>
         </div>
 
-        {/* Overdue alert */}
-        {overdue.length > 0 && (
+        {/* Overdue alert — gated by settings toggle */}
+        {settings.showOverdueAlerts && overdue.length > 0 && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-5">
             <div className="flex items-center gap-2 mb-3">
               <svg className="w-5 h-5 text-red-600" fill="currentColor" viewBox="0 0 20 20">
@@ -574,8 +581,8 @@ export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) =>
           </div>
         )}
 
-        {/* No due date alert */}
-        {noDueDate.length > 0 && (
+        {/* No due date alert — gated by settings toggle */}
+        {settings.showNoDueDateAlerts && noDueDate.length > 0 && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-5">
             <div className="flex items-center gap-2 mb-3">
               <svg className="w-5 h-5 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">

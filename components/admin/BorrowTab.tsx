@@ -1,7 +1,8 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { InventoryItem } from '@/lib/types/inventory';
 import { subscribeAvailableInventory, submitBorrowRequest, SelectedBorrowItem } from '@/lib/firebase/firestore';
+import { useSystemSettings } from '@/lib/hooks/useSystemSettings';
 
 const CATS = ['All','Camera','Accessories','Cable','Projector','Lighting','Laptop','Audio','Other'];
 
@@ -21,6 +22,7 @@ function ImgOrPlaceholder({ url, name }: { url: string|null; name: string }) {
       </svg>;
 }
 
+/** Formats a date string (YYYY-MM-DD) into a readable label like "24 Nov 2008" */
 function formatDate(val: string): string {
   if (!val) return '—';
   const d = new Date(val + 'T00:00:00');
@@ -28,22 +30,37 @@ function formatDate(val: string): string {
   return d.toLocaleDateString('en-PH', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+/** Property sticker component — mirrors the blue 5th CRG sticker style */
 function PropertySticker({ item }: { item: InventoryItem }) {
   return (
-    <div style={{
-      width: '100%', maxWidth: 300, background: '#1e56b0', borderRadius: 10,
-      padding: '14px 16px 12px', fontFamily: 'Arial, sans-serif',
-      position: 'relative', overflow: 'hidden', border: '2px solid #174496', margin: '0 auto',
-    }}>
+    <div
+      style={{
+        width: '100%',
+        maxWidth: 300,
+        background: '#1e56b0',
+        borderRadius: 10,
+        padding: '14px 16px 12px',
+        fontFamily: 'Arial, sans-serif',
+        position: 'relative',
+        overflow: 'hidden',
+        border: '2px solid #174496',
+        margin: '0 auto',
+      }}
+    >
+      {/* Subtle diagonal lines overlay */}
       <div style={{
         position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.05,
         backgroundImage: 'repeating-linear-gradient(45deg, white 0px, white 1px, transparent 1px, transparent 10px)',
       }}/>
+
+      {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 8 }}>
         <div style={{
-          width: 36, height: 36, borderRadius: '50%', background: 'rgba(255,255,255,0.18)',
-          border: '1.5px solid rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center',
-          justifyContent: 'center', flexShrink: 0,
+          width: 36, height: 36, borderRadius: '50%',
+          background: 'rgba(255,255,255,0.18)',
+          border: '1.5px solid rgba(255,255,255,0.5)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0,
         }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" aria-hidden="true">
             <circle cx="12" cy="12" r="9"/>
@@ -61,7 +78,11 @@ function PropertySticker({ item }: { item: InventoryItem }) {
         </div>
         <div style={{ width: 36 }}/>
       </div>
+
+      {/* Divider */}
       <div style={{ height: 1, background: 'rgba(255,255,255,0.3)', marginBottom: 10 }}/>
+
+      {/* Fields */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {[
           { label: 'Office:', value: item.officeOwner },
@@ -71,14 +92,19 @@ function PropertySticker({ item }: { item: InventoryItem }) {
         ].map(({ label, value }) => (
           <div key={label} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <span style={{
-              color: 'rgba(255,255,255,0.78)', fontSize: 9.5, textTransform: 'uppercase',
-              letterSpacing: '0.7px', width: 108, flexShrink: 0,
+              color: 'rgba(255,255,255,0.78)', fontSize: 9.5,
+              textTransform: 'uppercase', letterSpacing: '0.7px',
+              width: 108, flexShrink: 0,
             }}>
               {label}
             </span>
-            <div style={{ flex: 1, background: 'white', borderRadius: 3, padding: '3px 8px', minHeight: 22 }}>
+            <div style={{
+              flex: 1, background: 'white', borderRadius: 3,
+              padding: '3px 8px', minHeight: 22,
+            }}>
               <span style={{
-                color: value ? '#1a3870' : '#aab4c8', fontSize: 11, fontWeight: 600,
+                color: value ? '#1a3870' : '#aab4c8',
+                fontSize: 11, fontWeight: 600,
                 fontFamily: label === 'Inventory Nr.:' ? 'monospace' : 'Arial, sans-serif',
               }}>
                 {value || '—'}
@@ -87,10 +113,13 @@ function PropertySticker({ item }: { item: InventoryItem }) {
           </div>
         ))}
       </div>
+
+      {/* Footer */}
       <div style={{ marginTop: 10, borderTop: '1px solid rgba(255,255,255,0.2)', paddingTop: 7 }}>
         <p style={{
-          color: 'rgba(255,255,255,0.5)', fontSize: 7.5, textAlign: 'center',
-          textTransform: 'uppercase', letterSpacing: '0.9px', margin: 0,
+          color: 'rgba(255,255,255,0.5)', fontSize: 7.5,
+          textAlign: 'center', textTransform: 'uppercase',
+          letterSpacing: '0.9px', margin: 0,
         }}>
           Tampering of this sticker is punishable by law
         </p>
@@ -115,23 +144,35 @@ function DetailField({ label, value }: { label: string; value: string | number }
   );
 }
 
+/** Expandable item row with full details + property sticker */
 function ItemRow({
-  item, isSelected, onToggle, quantity, onSetQty,
+  item,
+  isSelected,
+  onToggle,
+  quantity,
+  onSetQty,
 }: {
-  item: InventoryItem; isSelected: boolean; onToggle: () => void;
-  quantity: number; onSetQty: (qty: number) => void;
+  item: InventoryItem;
+  isSelected: boolean;
+  onToggle: () => void;
+  quantity: number;
+  onSetQty: (qty: number) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
     <div className={`border-b border-gray-100 transition ${isSelected ? 'bg-purple-50' : 'bg-white'}`}>
+      {/* Main row */}
       <div className="flex items-center gap-3 px-5 py-3.5">
+        {/* Checkbox toggle */}
         <button
           type="button"
           onClick={onToggle}
           aria-label={isSelected ? `Deselect ${item.name}` : `Select ${item.name}`}
           className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border transition
-            ${isSelected ? 'bg-purple-600 border-purple-600' : 'border-gray-300 hover:border-purple-400 bg-white'}`}
+            ${isSelected
+              ? 'bg-purple-600 border-purple-600'
+              : 'border-gray-300 hover:border-purple-400 bg-white'}`}
         >
           {isSelected && (
             <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -139,17 +180,28 @@ function ItemRow({
             </svg>
           )}
         </button>
-        <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer" onClick={onToggle}>
+
+        {/* Thumbnail */}
+        <div
+          className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer"
+          onClick={onToggle}
+        >
           <ImgOrPlaceholder url={item.imageUrl} name={item.name}/>
         </div>
+
+        {/* Name + meta */}
         <div className="flex-1 min-w-0 cursor-pointer" onClick={onToggle}>
           <p className="text-sm font-medium text-gray-800 truncate">{item.name}</p>
           <p className="text-xs text-gray-500">{item.category} • {item.inventoryNumber || 'No inv. no.'}</p>
         </div>
+
+        {/* Qty + status */}
         <div className="text-right flex-shrink-0 mr-1">
           {!item.isUnique && <p className="text-xs text-gray-500 mb-0.5">Qty: {item.quantity}</p>}
           <span className="badge-available">Available</span>
         </div>
+
+        {/* Expand toggle */}
         <button
           type="button"
           onClick={() => setExpanded(p => !p)}
@@ -157,28 +209,36 @@ function ItemRow({
           aria-expanded={expanded ? 'true' : 'false'}
           className="p-1.5 rounded-lg text-gray-400 hover:text-purple-700 hover:bg-purple-50 transition flex-shrink-0"
         >
-          <svg className={`w-4 h-4 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg
+            className={`w-4 h-4 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
+          >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/>
           </svg>
         </button>
       </div>
 
+      {/* ── Expanded detail panel ── */}
       {expanded && (
         <div className="px-5 pb-5 pt-1 border-t border-gray-100 space-y-4 bg-white">
+
+          {/* Item image (large) */}
           {item.imageUrl && (
             <div className="w-full h-40 rounded-xl overflow-hidden bg-gray-100">
               <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover"/>
             </div>
           )}
+
+          {/* Detail grid */}
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Item Details</p>
             <div className="grid grid-cols-2 gap-2">
-              <DetailField label="Category" value={item.category}/>
-              <DetailField label="Asset Type" value={item.isUnique ? 'Unique Asset' : 'Bulk Item'}/>
-              <DetailField label="Quantity" value={item.quantity}/>
+              <DetailField label="Category"      value={item.category}/>
+              <DetailField label="Asset Type"    value={item.isUnique ? 'Unique Asset' : 'Bulk Item'}/>
+              <DetailField label="Quantity"      value={item.quantity}/>
               <DetailField label="Inventory No." value={item.inventoryNumber || '—'}/>
-              <DetailField label="Serial No." value={item.serialNumber || '—'}/>
-              <DetailField label="Office Owner" value={item.officeOwner || '—'}/>
+              <DetailField label="Serial No."    value={item.serialNumber || '—'}/>
+              <DetailField label="Office Owner"  value={item.officeOwner || '—'}/>
               <DetailField label="Date Acquired" value={formatDate(item.dateAcquired)}/>
               <DetailField label="Last Inventory" value={formatDate(item.inventoryDate)}/>
               <div className="col-span-2 bg-gray-50 rounded-lg px-3 py-2">
@@ -195,26 +255,39 @@ function ItemRow({
               )}
             </div>
           </div>
+
+          {/* Property Sticker */}
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Property Sticker</p>
             <PropertySticker item={item}/>
           </div>
+
+          {/* Quick-add / qty controls inside panel */}
           <div className="flex items-center gap-3 pt-1">
             {isSelected && !item.isUnique && (
               <div className="flex items-center gap-2">
                 <span className="text-xs text-gray-600 font-medium">Qty:</span>
-                <button type="button" onClick={() => onSetQty(quantity - 1)}
-                  className="w-7 h-7 rounded-lg border border-gray-200 text-gray-600 text-sm flex items-center justify-center hover:bg-gray-50 transition">−</button>
+                <button
+                  type="button"
+                  onClick={() => onSetQty(quantity - 1)}
+                  className="w-7 h-7 rounded-lg border border-gray-200 text-gray-600 text-sm flex items-center justify-center hover:bg-gray-50 transition"
+                >−</button>
                 <span className="text-sm font-semibold w-6 text-center">{quantity}</span>
-                <button type="button" onClick={() => onSetQty(quantity + 1)}
-                  className="w-7 h-7 rounded-lg border border-gray-200 text-gray-600 text-sm flex items-center justify-center hover:bg-gray-50 transition">+</button>
+                <button
+                  type="button"
+                  onClick={() => onSetQty(quantity + 1)}
+                  className="w-7 h-7 rounded-lg border border-gray-200 text-gray-600 text-sm flex items-center justify-center hover:bg-gray-50 transition"
+                >+</button>
               </div>
             )}
-            <button type="button" onClick={onToggle}
+            <button
+              type="button"
+              onClick={onToggle}
               className={`flex-1 py-2 rounded-xl text-sm font-medium transition border
                 ${isSelected
                   ? 'bg-purple-50 border-purple-300 text-purple-700 hover:bg-purple-100'
-                  : 'bg-purple-600 border-purple-600 text-white hover:bg-purple-700'}`}>
+                  : 'bg-purple-600 border-purple-600 text-white hover:bg-purple-700'}`}
+            >
               {isSelected ? 'Remove from selection' : 'Add to borrow list'}
             </button>
           </div>
@@ -225,6 +298,8 @@ function ItemRow({
 }
 
 export default function BorrowTab() {
+  const settings = useSystemSettings();
+
   const [items, setItems]           = useState<InventoryItem[]>([]);
   const [loadingItems, setLoading]  = useState(true);
   const [search, setSearch]         = useState('');
@@ -238,7 +313,19 @@ export default function BorrowTab() {
   const [notes, setNotes]           = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess]       = useState(false);
-  const [error, setError]           = useState<string | null>(null);
+  const [error, setError]           = useState<string|null>(null);
+
+  // Pre-fill return date from setting once settings load from localStorage
+  const defaultReturn = useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + settings.defaultReturnDays);
+    return d.toISOString().split('T')[0];
+  }, [settings.defaultReturnDays]);
+
+  useEffect(() => {
+    // Only pre-fill if user hasn't already typed something
+    setReturnDate(prev => prev || defaultReturn);
+  }, [defaultReturn]);
 
   useEffect(() => {
     return subscribeAvailableInventory(data => { setItems(data); setLoading(false); });
@@ -275,29 +362,18 @@ export default function BorrowTab() {
     }));
   }
 
-  // ─── Phase 2.1 fix: propagate specific error messages from firestore ────────
-  // Previously used a generic catch-all; now shows the validation message
-  // (e.g. "Not enough stock for X. Requested: 5, Available: 2.")
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!selected.length) return;
-    setSubmitting(true);
-    setError(null);
+    setSubmitting(true); setError(null);
     try {
       await submitBorrowRequest(name, dept, contact, selected, borrowDate, returnDate || null, notes);
       setSelected([]); setName(''); setDept(''); setContact('');
       setReturnDate(''); setNotes('');
       setBorrowDate(new Date().toISOString().split('T')[0]);
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 4000);
-    } catch (err: any) {
-      // Show the specific validation message thrown by submitBorrowRequest,
-      // not just a generic fallback.
-      setError(err?.message || 'Failed to submit. Please try again.');
-    } finally {
-      setSubmitting(false);
-    }
+      setSuccess(true); setTimeout(() => setSuccess(false), 4000);
+    } catch { setError('Failed to submit. Please try again.'); }
+    finally { setSubmitting(false); }
   }
 
   return (
@@ -311,12 +387,7 @@ export default function BorrowTab() {
         </div>
       )}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-start gap-3">
-          <svg className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd"/>
-          </svg>
-          <p className="text-sm text-red-800">{error}</p>
-        </div>
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-800">{error}</div>
       )}
 
       <div className="grid grid-cols-2 gap-6">
@@ -367,6 +438,7 @@ export default function BorrowTab() {
             }
           </div>
 
+          {/* Selected summary strip */}
           {selected.length > 0 && (
             <div className="border-t border-gray-100 px-5 py-3 bg-purple-50">
               <p className="text-xs font-semibold text-purple-700 mb-2">Selected ({selected.length})</p>
@@ -375,15 +447,25 @@ export default function BorrowTab() {
                   <span className="text-xs text-gray-700 flex-1 truncate">{s.item.name}</span>
                   {!s.item.isUnique && (
                     <div className="flex items-center gap-1">
-                      <button type="button" onClick={() => setQty(s.item.id, s.quantity - 1)}
-                        className="w-6 h-6 rounded bg-white border border-gray-200 text-gray-600 text-xs flex items-center justify-center hover:bg-gray-50">−</button>
+                      <button
+                        type="button"
+                        onClick={() => setQty(s.item.id, s.quantity - 1)}
+                        className="w-6 h-6 rounded bg-white border border-gray-200 text-gray-600 text-xs flex items-center justify-center hover:bg-gray-50"
+                      >−</button>
                       <span className="text-xs w-5 text-center font-medium">{s.quantity}</span>
-                      <button type="button" onClick={() => setQty(s.item.id, s.quantity + 1)}
-                        className="w-6 h-6 rounded bg-white border border-gray-200 text-gray-600 text-xs flex items-center justify-center hover:bg-gray-50">+</button>
+                      <button
+                        type="button"
+                        onClick={() => setQty(s.item.id, s.quantity + 1)}
+                        className="w-6 h-6 rounded bg-white border border-gray-200 text-gray-600 text-xs flex items-center justify-center hover:bg-gray-50"
+                      >+</button>
                     </div>
                   )}
-                  <button type="button" onClick={() => toggle(s.item)} aria-label={`Remove ${s.item.name}`}
-                    className="text-gray-400 hover:text-red-500 transition">
+                  <button
+                    type="button"
+                    onClick={() => toggle(s.item)}
+                    aria-label={`Remove ${s.item.name}`}
+                    className="text-gray-400 hover:text-red-500 transition"
+                  >
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
                     </svg>
@@ -416,22 +498,22 @@ export default function BorrowTab() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Borrow Date <span className="text-red-500">*</span></label>
-                <input type="date" required value={borrowDate} onChange={e => setBorrowDate(e.target.value)} className="input-base"/>
+                <input type="date" required value={borrowDate} onChange={e => setBorrowDate(e.target.value)} aria-label="Borrow Date" className="input-base"/>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Return Date <span className="text-xs text-gray-400 font-normal">(optional)</span>
                 </label>
-                <input type="date" value={returnDate} onChange={e => setReturnDate(e.target.value)} className="input-base"/>
-                {!returnDate && <p className="text-xs text-yellow-600 mt-1">⚠️ No date = yellow flag</p>}
+                <input type="date" value={returnDate} onChange={e => setReturnDate(e.target.value)} aria-label="Return Date" className="input-base"/>
+                {!returnDate && <p className="text-xs text-yellow-600 mt-1">⚠️ No date — will show yellow flag on borrowed list</p>}
+                {returnDate && <p className="text-xs text-gray-400 mt-1">Pre-filled from settings ({settings.defaultReturnDays}d)</p>}
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Notes <span className="text-xs text-gray-400 font-normal">(optional)</span>
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Notes <span className="text-xs text-gray-400 font-normal">(optional)</span></label>
               <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
-                placeholder="Any notes about this borrow..." className="input-base resize-none"/>
+                placeholder="Any notes about this borrow..."
+                className="input-base resize-none"/>
             </div>
             <button type="submit" disabled={submitting || selected.length === 0} className="btn-primary w-full py-3">
               {submitting
