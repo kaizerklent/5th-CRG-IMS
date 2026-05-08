@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/lib/firebase/AuthContext';
-import { subscribeAllBorrows, subscribeInventory, subscribeVehicles, subscribeVehicleExpenses } from '@/lib/firebase/firestore';
+import { subscribeAllBorrows, subscribeInventory, subscribeVehicles, subscribeVehicleExpenses, markReturned } from '@/lib/firebase/firestore';
 import { BorrowRequest, InventoryItem, Vehicle, VehicleExpense, TabId } from '@/lib/types/inventory';
 import { useSystemSettings } from '@/lib/hooks/useSystemSettings';
 
@@ -31,8 +31,6 @@ function StatCard({ label, value, color, icon }: {
   );
 }
 
-// ── Helpers shared with sticker ─────────────────────────────────────────────
-
 function formatDate(val: string): string {
   if (!val) return '—';
   const d = new Date(val + 'T00:00:00');
@@ -40,96 +38,56 @@ function formatDate(val: string): string {
   return d.toLocaleDateString('en-PH', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+function Spinner({ sm }: { sm?: boolean }) {
+  return (
+    <svg className={`animate-spin ${sm ? 'w-3.5 h-3.5' : 'w-5 h-5'}`} fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+    </svg>
+  );
+}
+
 // ── Property Sticker (inline, read-only) ────────────────────────────────────
 
 function PropertySticker({ item }: { item: InventoryItem }) {
   return (
-    <div
-      style={{
-        width: '100%',
-        maxWidth: 280,
-        background: '#1e56b0',
-        borderRadius: 10,
-        padding: '12px 14px 10px',
-        fontFamily: 'Arial, sans-serif',
-        position: 'relative',
-        overflow: 'hidden',
-        border: '2px solid #174496',
-        margin: '0 auto',
-      }}
-    >
-      <div style={{
-        position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.05,
-        backgroundImage: 'repeating-linear-gradient(45deg, white 0px, white 1px, transparent 1px, transparent 10px)',
-      }}/>
-
-      {/* Header */}
+    <div style={{
+      width: '100%', maxWidth: 280, background: '#1e56b0', borderRadius: 10,
+      padding: '12px 14px 10px', fontFamily: 'Arial, sans-serif', position: 'relative',
+      overflow: 'hidden', border: '2px solid #174496', margin: '0 auto',
+    }}>
+      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.05, backgroundImage: 'repeating-linear-gradient(45deg, white 0px, white 1px, transparent 1px, transparent 10px)' }}/>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 8 }}>
-        <div style={{
-          width: 30, height: 30, borderRadius: '50%',
-          background: 'rgba(255,255,255,0.18)',
-          border: '1.5px solid rgba(255,255,255,0.5)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0,
-        }}>
+        <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(255,255,255,0.18)', border: '1.5px solid rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" aria-hidden="true">
-            <circle cx="12" cy="12" r="9"/>
-            <path d="M12 8v4l3 3" strokeLinecap="round" strokeLinejoin="round"/>
+            <circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 3" strokeLinecap="round" strokeLinejoin="round"/>
             <path d="M3.6 9h16.8M3.6 15h16.8" strokeLinecap="round" opacity="0.5"/>
           </svg>
         </div>
         <div style={{ textAlign: 'center', flex: 1 }}>
-          <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: 7, letterSpacing: '1.4px', textTransform: 'uppercase', margin: '0 0 1px' }}>
-            5th Civil Relations Group
-          </p>
-          <p style={{ color: 'white', fontSize: 16, fontWeight: 900, letterSpacing: '3px', textTransform: 'uppercase', margin: 0, lineHeight: 1 }}>
-            PROPERTY
-          </p>
+          <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: 7, letterSpacing: '1.4px', textTransform: 'uppercase', margin: '0 0 1px' }}>5th Civil Relations Group</p>
+          <p style={{ color: 'white', fontSize: 16, fontWeight: 900, letterSpacing: '3px', textTransform: 'uppercase', margin: 0, lineHeight: 1 }}>PROPERTY</p>
         </div>
         <div style={{ width: 30 }}/>
       </div>
-
       <div style={{ height: 1, background: 'rgba(255,255,255,0.3)', marginBottom: 8 }}/>
-
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         {[
-          { label: 'Office:',         value: item.officeOwner },
-          { label: 'Inventory Nr.:',  value: item.inventoryNumber },
-          { label: 'Date Acquired:',  value: formatDate(item.dateAcquired) },
+          { label: 'Office:', value: item.officeOwner },
+          { label: 'Inventory Nr.:', value: item.inventoryNumber },
+          { label: 'Date Acquired:', value: formatDate(item.dateAcquired) },
           { label: 'Inventory Date:', value: formatDate(item.inventoryDate) },
         ].map(({ label, value }) => (
           <div key={label} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <span style={{
-              color: 'rgba(255,255,255,0.78)', fontSize: 8.5,
-              textTransform: 'uppercase', letterSpacing: '0.6px',
-              width: 94, flexShrink: 0,
-            }}>
-              {label}
-            </span>
-            <div style={{
-              flex: 1, background: 'white', borderRadius: 3,
-              padding: '2px 6px', minHeight: 18,
-            }}>
-              <span style={{
-                color: value ? '#1a3870' : '#aab4c8',
-                fontSize: 10, fontWeight: 600,
-                fontFamily: label === 'Inventory Nr.:' ? 'monospace' : 'Arial, sans-serif',
-              }}>
-                {value || '—'}
-              </span>
+            <span style={{ color: 'rgba(255,255,255,0.78)', fontSize: 8.5, textTransform: 'uppercase', letterSpacing: '0.6px', width: 94, flexShrink: 0 }}>{label}</span>
+            <div style={{ flex: 1, background: 'white', borderRadius: 3, padding: '2px 6px', minHeight: 18 }}>
+              <span style={{ color: value ? '#1a3870' : '#aab4c8', fontSize: 10, fontWeight: 600, fontFamily: label === 'Inventory Nr.:' ? 'monospace' : 'Arial, sans-serif' }}>{value || '—'}</span>
             </div>
           </div>
         ))}
       </div>
-
       <div style={{ marginTop: 8, borderTop: '1px solid rgba(255,255,255,0.2)', paddingTop: 6 }}>
-        <p style={{
-          color: 'rgba(255,255,255,0.5)', fontSize: 7,
-          textAlign: 'center', textTransform: 'uppercase',
-          letterSpacing: '0.9px', margin: 0,
-        }}>
-          Tampering of this sticker is punishable by law
-        </p>
+        <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 7, textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.9px', margin: 0 }}>Tampering of this sticker is punishable by law</p>
       </div>
     </div>
   );
@@ -137,80 +95,49 @@ function PropertySticker({ item }: { item: InventoryItem }) {
 
 // ── Expanded Borrowed Item Card ──────────────────────────────────────────────
 
-function BorrowedItemCard({
-  borrowedItem,
-  inventoryItems,
-}: {
+function BorrowedItemCard({ borrowedItem, inventoryItems }: {
   borrowedItem: { itemName: string; quantity?: number };
   inventoryItems: InventoryItem[];
 }) {
   const [open, setOpen] = useState(false);
-
-  // Match by name (adapt to id if available)
   const inv = inventoryItems.find(i => i.name === borrowedItem.itemName) ?? null;
-
   const COND_COLOR: Record<string, string> = {
-    Good: 'bg-green-100 text-green-700',
-    Fair: 'bg-yellow-100 text-yellow-700',
-    Damaged: 'bg-red-100 text-red-700',
-    'Under Repair': 'bg-orange-100 text-orange-700',
+    Good: 'bg-green-100 text-green-700', Fair: 'bg-yellow-100 text-yellow-700',
+    Damaged: 'bg-red-100 text-red-700', 'Under Repair': 'bg-orange-100 text-orange-700',
   };
-
   return (
     <div className="bg-gray-50 rounded-lg overflow-hidden">
-      {/* Row — always visible */}
-      <button
-        type="button"
-        onClick={() => setOpen(p => !p)}
-        className="w-full flex items-center gap-3 px-3 py-3 hover:bg-gray-100 transition text-left"
-        aria-expanded={open}
-      >
-        {/* Icon */}
+      <button type="button" onClick={() => setOpen(p => !p)}
+        className="w-full flex items-center gap-3 px-3 py-3 hover:bg-gray-100 transition text-left" aria-expanded={open}>
         <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
           {inv?.imageUrl
             ? <img src={inv.imageUrl} alt={inv.name} className="w-full h-full object-cover"/>
-            : (
-              <svg className="w-4 h-4 text-purple-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/>
-              </svg>
-            )
+            : <svg className="w-4 h-4 text-purple-700" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
           }
         </div>
-
-        {/* Name + qty */}
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-gray-800 truncate">{borrowedItem.itemName}</p>
-          {borrowedItem.quantity && (
-            <p className="text-xs text-gray-500">Qty: {borrowedItem.quantity}</p>
-          )}
+          {borrowedItem.quantity && <p className="text-xs text-gray-500">Qty: {borrowedItem.quantity}</p>}
         </div>
-
-        {/* Chevron */}
-        <svg
-          className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
-          fill="none" viewBox="0 0 24 24" stroke="currentColor"
-        >
+        <svg className={`w-4 h-4 text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/>
         </svg>
       </button>
-
-      {/* Expanded detail */}
       {open && (
         <div className="px-3 pb-4 pt-1 space-y-3 border-t border-gray-200">
           {!inv ? (
             <p className="text-xs text-gray-400 text-center py-2">Item details not found in inventory.</p>
           ) : (
             <>
-              {/* Detail grid */}
               <div className="grid grid-cols-2 gap-2">
                 {[
-                  { label: 'Category',      value: inv.category },
-                  { label: 'Asset Type',    value: inv.isUnique ? 'Unique Asset' : 'Bulk Item' },
-                  { label: 'Condition',     value: inv.condition },
-                  { label: 'Status',        value: inv.status },
+                  { label: 'Category', value: inv.category },
+                  { label: 'Asset Type', value: inv.isUnique ? 'Unique Asset' : 'Bulk Item' },
+                  { label: 'Condition', value: inv.condition },
+                  { label: 'Status', value: inv.status },
                   { label: 'Inventory No.', value: inv.inventoryNumber || '—' },
-                  { label: 'Serial No.',    value: inv.serialNumber || '—' },
-                  { label: 'Office Owner',  value: inv.officeOwner || '—' },
+                  { label: 'Serial No.', value: inv.serialNumber || '—' },
+                  { label: 'Office Owner', value: inv.officeOwner || '—' },
                   { label: 'Date Acquired', value: formatDate(inv.dateAcquired) },
                 ].map(f => (
                   <div key={f.label} className="bg-white rounded-lg px-2.5 py-2">
@@ -220,24 +147,20 @@ function BorrowedItemCard({
                         ? <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${COND_COLOR[inv.condition] || 'bg-gray-100 text-gray-700'}`}>{f.value}</span>
                         : f.label === 'Status'
                           ? <span className={inv.status === 'Available' ? 'badge-available' : 'badge-unavailable'}>{f.value}</span>
-                          : f.value
-                      }
+                          : f.value}
                     </p>
                   </div>
                 ))}
               </div>
-
               {inv.notes && (
                 <div className="bg-white rounded-lg px-2.5 py-2">
                   <p className="text-xs text-gray-500 mb-0.5">Notes</p>
                   <p className="text-xs text-gray-700">{inv.notes}</p>
                 </div>
               )}
-
-              {/* Property Sticker */}
               <div>
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Property Sticker</p>
-                <PropertySticker item={inv} />
+                <PropertySticker item={inv}/>
               </div>
             </>
           )}
@@ -254,10 +177,8 @@ function getInitials(name: string) {
 }
 
 const AVATAR_COLORS = [
-  'bg-blue-100 text-blue-800',
-  'bg-purple-100 text-purple-800',
-  'bg-teal-100 text-teal-800',
-  'bg-orange-100 text-orange-800',
+  'bg-blue-100 text-blue-800', 'bg-purple-100 text-purple-800',
+  'bg-teal-100 text-teal-800', 'bg-orange-100 text-orange-800',
   'bg-pink-100 text-pink-800',
 ];
 
@@ -267,12 +188,72 @@ function avatarColor(name: string) {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-function BorrowerDrawer({
-  borrow,
-  allBorrows,
-  inventoryItems,
-  today,
+// ── Phase 4.3: Quick Return Confirm Modal ────────────────────────────────────
+
+function QuickReturnConfirm({
+  req,
   onClose,
+  onConfirm,
+}: {
+  req: BorrowRequest;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr]   = useState<string | null>(null);
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4" role="dialog" aria-modal="true">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+            <svg className="w-5 h-5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/>
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-base font-semibold text-gray-800">Quick Return</h3>
+            <p className="text-xs text-gray-500">Marks as returned in Good condition</p>
+          </div>
+        </div>
+
+        <div className="bg-gray-50 rounded-xl p-3 mb-4 space-y-1">
+          <p className="text-sm font-medium text-gray-800">{req.borrowerName}</p>
+          <p className="text-xs text-gray-600">{req.items.map(i => i.itemName).join(', ')}</p>
+        </div>
+
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 mb-4 flex items-start gap-2">
+          <svg className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
+          </svg>
+          <p className="text-xs text-amber-700">
+            Quick return assumes <strong>Good condition</strong> with no damage photos. For damaged items, use the <strong>Borrowed Items</strong> tab instead.
+          </p>
+        </div>
+
+        {err && <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{err}</div>}
+
+        <div className="flex gap-3">
+          <button onClick={onClose} disabled={busy} className="btn-secondary flex-1">Cancel</button>
+          <button
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true); setErr(null);
+              try { await onConfirm(); onClose(); }
+              catch { setErr('Failed to mark as returned. Please try again.'); setBusy(false); }
+            }}
+            className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white rounded-lg text-sm font-semibold transition flex items-center justify-center gap-2"
+          >
+            {busy ? <><Spinner sm/> Saving...</> : 'Confirm Return'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BorrowerDrawer({
+  borrow, allBorrows, inventoryItems, today, onClose,
 }: {
   borrow: BorrowRequest | null;
   allBorrows: BorrowRequest[];
@@ -280,6 +261,10 @@ function BorrowerDrawer({
   today: string;
   onClose: () => void;
 }) {
+  // Phase 4.3: quick return state
+  const [quickReturnReq, setQuickReturnReq] = useState<BorrowRequest | null>(null);
+  const [quickReturnErr, setQuickReturnErr] = useState<string | null>(null);
+
   if (!borrow) return null;
 
   const history  = allBorrows.filter(r => r.borrowerName === borrow.borrowerName);
@@ -301,18 +286,12 @@ function BorrowerDrawer({
   return (
     <>
       {/* Backdrop */}
-      <div
-        className="fixed inset-0 bg-black/20 z-40"
-        onClick={onClose}
-        aria-hidden="true"
-      />
+      <div className="fixed inset-0 bg-black/20 z-40" onClick={onClose} aria-hidden="true"/>
 
       {/* Drawer panel */}
       <aside
         className="fixed right-0 top-0 h-full w-full max-w-sm bg-white border-l border-gray-200 z-50 flex flex-col shadow-xl"
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Details for ${borrow.borrowerName}`}
+        role="dialog" aria-modal="true" aria-label={`Details for ${borrow.borrowerName}`}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
@@ -325,11 +304,7 @@ function BorrowerDrawer({
               <p className="text-xs text-gray-500">{borrow.borrowerDepartment}</p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            aria-label="Close drawer"
-            className="p-1.5 rounded-lg hover:bg-gray-100 transition text-gray-500"
-          >
+          <button onClick={onClose} aria-label="Close drawer" className="p-1.5 rounded-lg hover:bg-gray-100 transition text-gray-500">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
             </svg>
@@ -376,28 +351,69 @@ function BorrowerDrawer({
             ].map(f => (
               <div key={f.label} className="bg-gray-50 rounded-lg px-3 py-2.5">
                 <p className="text-xs text-gray-500 mb-0.5">{f.label}</p>
-                <p className={`text-sm font-medium ${(f as any).warn ? 'text-yellow-600' : 'text-gray-800'}`}>
-                  {f.value}
-                </p>
+                <p className={`text-sm font-medium ${(f as any).warn ? 'text-yellow-600' : 'text-gray-800'}`}>{f.value}</p>
               </div>
             ))}
           </div>
 
-          {/* ── Borrowed Items ── */}
+          {/* Borrowed Items */}
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
               Borrowed Items ({borrow.items.length})
             </p>
             <div className="space-y-2">
               {borrow.items.map((item, idx) => (
-                <BorrowedItemCard
-                  key={idx}
-                  borrowedItem={item}
-                  inventoryItems={inventoryItems}
-                />
+                <BorrowedItemCard key={idx} borrowedItem={item} inventoryItems={inventoryItems}/>
               ))}
             </div>
           </div>
+
+          {/* ── Phase 4.3: Active borrows with quick return ── */}
+          {active.length > 0 && borrow.status === 'Approved' && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                Active Borrows — Quick Return
+              </p>
+
+              {quickReturnErr && (
+                <div className="mb-2 p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">{quickReturnErr}</div>
+              )}
+
+              <div className="space-y-2">
+                {active.map(r => (
+                  <div key={r.id} className="flex items-start justify-between bg-gray-50 rounded-lg px-3 py-2.5 gap-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-gray-700 truncate">
+                        {r.items.map(i => i.itemName).join(', ')}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">Borrowed {r.borrowDate}</p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                        r.returnDate && r.returnDate < today
+                          ? 'bg-red-100 text-red-700'
+                          : 'bg-blue-100 text-blue-700'
+                      }`}>
+                        {r.returnDate && r.returnDate < today ? 'Overdue' : 'Active'}
+                      </span>
+                      {/* Quick return button */}
+                      <button
+                        onClick={() => { setQuickReturnErr(null); setQuickReturnReq(r); }}
+                        className="px-2.5 py-1 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg transition whitespace-nowrap"
+                        title="Quick return — Good condition, no damage photos"
+                      >
+                        Return
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <p className="text-xs text-gray-400 mt-2 italic">
+                Quick return assumes Good condition. For damaged items, use the Borrowed Items tab.
+              </p>
+            </div>
+          )}
 
           {/* Borrow history for this person */}
           {history.length > 1 && (
@@ -432,6 +448,17 @@ function BorrowerDrawer({
           )}
         </div>
       </aside>
+
+      {/* Phase 4.3: Quick return confirmation modal */}
+      {quickReturnReq && (
+        <QuickReturnConfirm
+          req={quickReturnReq}
+          onClose={() => setQuickReturnReq(null)}
+          onConfirm={async () => {
+            await markReturned(quickReturnReq, 'Good', '', []);
+          }}
+        />
+      )}
     </>
   );
 }
@@ -443,9 +470,9 @@ export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) =>
   const name = user?.displayName || user?.email || 'Admin';
   const settings = useSystemSettings();
 
-  const [borrows, setBorrows]   = useState<BorrowRequest[]>([]);
-  const [items, setItems]       = useState<InventoryItem[]>([]);
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [borrows, setBorrows]     = useState<BorrowRequest[]>([]);
+  const [items, setItems]         = useState<InventoryItem[]>([]);
+  const [vehicles, setVehicles]   = useState<Vehicle[]>([]);
   const [vExpenses, setVExpenses] = useState<VehicleExpense[]>([]);
   const [loadingBorrows, setLoadingBorrows]   = useState(true);
   const [loadingItems, setLoadingItems]       = useState(true);
@@ -462,6 +489,13 @@ export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) =>
     const unsubVExp      = subscribeVehicleExpenses(null, data => { setVExpenses(data); setLoadingVExp(false); });
     return () => { unsubBorrows(); unsubInventory(); unsubVehicles(); unsubVExp(); };
   }, []);
+
+  // When a borrow gets returned via quick return, sync activeBorrow if it was that borrow
+  useEffect(() => {
+    if (!activeBorrow) return;
+    const updated = borrows.find(r => r.id === activeBorrow.id);
+    if (updated) setActiveBorrow(updated);
+  }, [borrows]);
 
   const approved      = borrows.filter(r => r.status === 'Approved');
   const overdue       = approved.filter(r => {
@@ -480,30 +514,25 @@ export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) =>
   const daysOverdue = (rd: string) =>
     Math.ceil((new Date(today).getTime() - new Date(rd).getTime()) / 86400000);
 
-  // ── Vehicle computed ──────────────────────────────────────────────────────
   const thisMonth = today.slice(0, 7);
-
   const fmtCurrency = (n: number) => {
     if (n >= 1_000_000) return '₱' + (n / 1_000_000).toFixed(1) + 'M';
     if (n >= 1_000)     return '₱' + (n / 1_000).toFixed(1) + 'k';
     return '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
-  const totalVehicleExpense    = vExpenses.reduce((s, e) => s + e.cost, 0);
+  const totalVehicleExpense     = vExpenses.reduce((s, e) => s + e.cost, 0);
   const thisMonthVehicleExpense = vExpenses.filter(e => e.date.startsWith(thisMonth)).reduce((s, e) => s + e.cost, 0);
 
-  // Top expense types
   const expenseByType = useMemo(() => {
     const map: Record<string, number> = {};
     vExpenses.forEach(e => { map[e.expenseType] = (map[e.expenseType] || 0) + e.cost; });
     return Object.entries(map).sort(([, a], [, b]) => b - a).slice(0, 5);
   }, [vExpenses]);
 
-  // Per-vehicle total
   const expenseByVehicle = useMemo(() => {
     return vehicles.map(v => ({
-      name: v.name,
-      plate: v.plateNumber,
+      name: v.name, plate: v.plateNumber,
       total: vExpenses.filter(e => e.vehicleId === v.id).reduce((s, e) => s + e.cost, 0),
     })).sort((a, b) => b.total - a.total);
   }, [vehicles, vExpenses]);
@@ -511,10 +540,7 @@ export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) =>
   const loading = loadingBorrows || loadingItems || loadingVehicles || loadingVExp;
 
   const borrowerBtn = (r: BorrowRequest) => (
-    <button
-      onClick={() => setActiveBorrow(r)}
-      className="font-medium text-purple-700 hover:underline text-left"
-    >
+    <button onClick={() => setActiveBorrow(r)} className="font-medium text-purple-700 hover:underline text-left">
       {r.borrowerName}
     </button>
   );
@@ -554,7 +580,7 @@ export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) =>
             icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>}/>
         </div>
 
-        {/* Overdue alert — gated by settings toggle */}
+        {/* Overdue alert */}
         {settings.showOverdueAlerts && overdue.length > 0 && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-5">
             <div className="flex items-center gap-2 mb-3">
@@ -566,9 +592,7 @@ export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) =>
             <div className="space-y-2">
               {overdue.map(r => (
                 <div key={r.id} className="flex items-center justify-between bg-white rounded-lg px-4 py-2.5 border border-red-100">
-                  <span className="text-sm text-gray-800">
-                    {borrowerBtn(r)} — {r.items.map(i => i.itemName).join(', ')}
-                  </span>
+                  <span className="text-sm text-gray-800">{borrowerBtn(r)} — {r.items.map(i => i.itemName).join(', ')}</span>
                   <span className="text-xs font-semibold text-red-700 bg-red-100 px-2.5 py-1 rounded-full whitespace-nowrap">
                     {daysOverdue(r.returnDate!)} days overdue
                   </span>
@@ -581,7 +605,7 @@ export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) =>
           </div>
         )}
 
-        {/* No due date alert — gated by settings toggle */}
+        {/* No due date alert */}
         {settings.showNoDueDateAlerts && noDueDate.length > 0 && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-5">
             <div className="flex items-center gap-2 mb-3">
@@ -593,9 +617,7 @@ export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) =>
             <div className="space-y-2">
               {noDueDate.map(r => (
                 <div key={r.id} className="flex items-center justify-between bg-white rounded-lg px-4 py-2.5 border border-yellow-100">
-                  <span className="text-sm text-gray-800">
-                    {borrowerBtn(r)} — {r.items.map(i => i.itemName).join(', ')}
-                  </span>
+                  <span className="text-sm text-gray-800">{borrowerBtn(r)} — {r.items.map(i => i.itemName).join(', ')}</span>
                   <span className="text-xs text-yellow-700">Borrowed {r.borrowDate}</span>
                 </div>
               ))}
@@ -622,10 +644,7 @@ export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) =>
                 {borrows.slice(0,5).length === 0 ? (
                   <tr><td colSpan={6} className="text-center text-gray-500 py-8 text-sm">No records yet.</td></tr>
                 ) : borrows.slice(0,5).map(r => (
-                  <tr
-                    key={r.id}
-                    className={`border-b border-gray-50 hover:bg-gray-50 transition ${activeBorrow?.id === r.id ? 'bg-purple-50' : ''}`}
-                  >
+                  <tr key={r.id} className={`border-b border-gray-50 hover:bg-gray-50 transition ${activeBorrow?.id === r.id ? 'bg-purple-50' : ''}`}>
                     <td className="px-6 py-4">{borrowerBtn(r)}</td>
                     <td className="px-6 py-4 text-gray-600">{r.borrowerDepartment}</td>
                     <td className="px-6 py-4 text-gray-600">{r.items.map(i => i.itemName).join(', ')}</td>
@@ -639,13 +658,12 @@ export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) =>
           </div>
         </div>
 
-        {/* ── Vehicle Section ─────────────────────────────────────────────── */}
+        {/* Vehicle Section divider */}
         <div className="flex items-center gap-3 pt-2">
           <div className="h-px flex-1 bg-gray-200"/>
           <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest flex items-center gap-2">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-                d="M8 17l-1.5-5.5L5 10h14l-1.5 1.5L16 17M3 17h18M5 10V8a2 2 0 012-2h10a2 2 0 012 2v2M9 17v1m6-1v1"/>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M8 17l-1.5-5.5L5 10h14l-1.5 1.5L16 17M3 17h18M5 10V8a2 2 0 012-2h10a2 2 0 012 2v2M9 17v1m6-1v1"/>
             </svg>
             Vehicle Overview
           </span>
@@ -654,28 +672,18 @@ export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) =>
 
         {/* Vehicle stat cards */}
         <div className="grid grid-cols-4 gap-4">
-          <StatCard
-            label="Total Vehicles" value={vehicles.length} color="teal"
-            icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 17l-1.5-5.5L5 10h14l-1.5 1.5L16 17M3 17h18M5 10V8a2 2 0 012-2h10a2 2 0 012 2v2M9 17v1m6-1v1"/></svg>}
-          />
-          <StatCard
-            label="Total Expenses" value={fmtCurrency(totalVehicleExpense)} color="purple"
-            icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>}
-          />
-          <StatCard
-            label="This Month" value={fmtCurrency(thisMonthVehicleExpense)} color="orange"
-            icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>}
-          />
-          <StatCard
-            label="Expense Records" value={vExpenses.length} color="blue"
-            icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>}
-          />
+          <StatCard label="Total Vehicles" value={vehicles.length} color="teal"
+            icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 17l-1.5-5.5L5 10h14l-1.5 1.5L16 17M3 17h18M5 10V8a2 2 0 012-2h10a2 2 0 012 2v2M9 17v1m6-1v1"/></svg>}/>
+          <StatCard label="Total Expenses" value={fmtCurrency(totalVehicleExpense)} color="purple"
+            icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>}/>
+          <StatCard label="This Month" value={fmtCurrency(thisMonthVehicleExpense)} color="orange"
+            icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>}/>
+          <StatCard label="Expense Records" value={vExpenses.length} color="blue"
+            icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>}/>
         </div>
 
-        {/* Vehicle breakdown + recent expenses side-by-side */}
+        {/* Vehicle breakdown + top expense types */}
         <div className="grid grid-cols-2 gap-4">
-
-          {/* Per-vehicle cost bars */}
           <div className="card p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold text-gray-800">Cost by Vehicle</h3>
@@ -695,15 +703,10 @@ export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) =>
                           <span className="text-sm font-medium text-gray-800 truncate">{v.name}</span>
                           <span className="text-xs text-gray-400 font-mono flex-shrink-0">{v.plate}</span>
                         </div>
-                        <span className="text-xs font-semibold text-gray-700 flex-shrink-0 ml-2">
-                          {fmtCurrency(v.total)}
-                        </span>
+                        <span className="text-xs font-semibold text-gray-700 flex-shrink-0 ml-2">{fmtCurrency(v.total)}</span>
                       </div>
                       <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all duration-500 ${bars[idx % bars.length]}`}
-                          style={{ width: `${pct}%` }}
-                        />
+                        <div className={`h-full rounded-full transition-all duration-500 ${bars[idx % bars.length]}`} style={{ width: `${pct}%` }}/>
                       </div>
                     </div>
                   );
@@ -712,7 +715,6 @@ export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) =>
             )}
           </div>
 
-          {/* Top expense types */}
           <div className="card p-5">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold text-gray-800">Top Expense Types</h3>
@@ -732,10 +734,7 @@ export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) =>
                         <span className="text-xs text-gray-500">{fmtCurrency(amount)} · {pct.toFixed(0)}%</span>
                       </div>
                       <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all duration-500 ${bars[idx % bars.length]}`}
-                          style={{ width: `${pct}%` }}
-                        />
+                        <div className={`h-full rounded-full transition-all duration-500 ${bars[idx % bars.length]}`} style={{ width: `${pct}%` }}/>
                       </div>
                     </div>
                   );
@@ -768,9 +767,7 @@ export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) =>
                     <td className="px-6 py-3.5 text-gray-600 whitespace-nowrap">{e.date}</td>
                     <td className="px-6 py-3.5 font-medium text-gray-800">{e.vehicleName}</td>
                     <td className="px-6 py-3.5">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700">
-                        {e.expenseType}
-                      </span>
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700">{e.expenseType}</span>
                     </td>
                     <td className="px-6 py-3.5 font-semibold text-gray-800 whitespace-nowrap">
                       ₱{e.cost.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

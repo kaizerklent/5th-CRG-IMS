@@ -9,7 +9,7 @@ import {
 import ImageUploader from '@/components/admin/ImageUploader';
 import { useSystemSettings } from '@/lib/hooks/useSystemSettings';
 
-const CATS = ['Camera','Accessories','Cable','Projector','Lighting','Laptop','Audio','Other'];
+const CATS = ['Camera','Accessories','Cable','Projector','Laptop','Audio','Other'];
 type FormData = Omit<InventoryItem,'id'|'createdAt'|'borrowedBy'|'borrowRequestId'>;
 type ModalMode = 'add'|'edit'|'view'|null;
 

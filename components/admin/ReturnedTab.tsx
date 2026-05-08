@@ -134,7 +134,7 @@ function DamageLightbox({ urls, startIndex, itemNames, onClose }: LightboxProps)
           )}
         </div>
 
-        {/* Dot indicators in lightbox footer */}
+        {/* Dot indicators */}
         {urls.length > 1 && (
           <div className="flex items-center gap-1.5 justify-center mt-3">
             {urls.map((_, i) => (
@@ -154,9 +154,6 @@ function DamageLightbox({ urls, startIndex, itemNames, onClose }: LightboxProps)
 }
 
 // ─── Inline Damage Photo Carousel Cell ───────────────────────────────────────
-// Shows ONE photo at a time in the table cell — no crowding.
-// Dot indicators + hover prev/next let user cycle through all photos inline.
-// Clicking the photo opens the full lightbox.
 
 function DamagePhotosCell({ req }: { req: BorrowRequest }) {
   const photos    = resolvePhotos(req);
@@ -178,82 +175,43 @@ function DamagePhotosCell({ req }: { req: BorrowRequest }) {
   return (
     <>
       <div className="flex flex-col items-start gap-1.5" style={{ minWidth: 80 }}>
-
-        {/* Photo thumbnail with prev/next arrows on hover */}
         <div className="relative group w-16 h-16 flex-shrink-0">
           <button
             onClick={() => setLightboxOpen(true)}
             className="w-full h-full block rounded-xl overflow-hidden ring-2 ring-red-200 hover:ring-red-400 transition focus:outline-none"
             title="Click to view full size"
           >
-            <img
-              src={photos[idx]}
-              alt={`Damage ${idx + 1}`}
-              className="w-full h-full object-cover"
-            />
+            <img src={photos[idx]} alt={`Damage ${idx + 1}`} className="w-full h-full object-cover"/>
           </button>
-
-          {/* Red damage badge */}
           <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center pointer-events-none z-10">
             <svg className="w-2.5 h-2.5 text-white" fill="currentColor" viewBox="0 0 20 20">
               <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
             </svg>
           </span>
-
-          {/* Prev / Next arrows — appear on hover, only when multiple photos */}
           {photos.length > 1 && (
             <>
-              <button
-                onClick={prev}
-                className="absolute left-0.5 top-1/2 -translate-y-1/2 w-5 h-5 bg-black/60 hover:bg-black/80 rounded-full flex items-center justify-center transition opacity-0 group-hover:opacity-100 z-10"
-              >
-                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7"/>
-                </svg>
+              <button onClick={prev} className="absolute left-0.5 top-1/2 -translate-y-1/2 w-5 h-5 bg-black/60 hover:bg-black/80 rounded-full flex items-center justify-center transition opacity-0 group-hover:opacity-100 z-10">
+                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7"/></svg>
               </button>
-              <button
-                onClick={next}
-                className="absolute right-0.5 top-1/2 -translate-y-1/2 w-5 h-5 bg-black/60 hover:bg-black/80 rounded-full flex items-center justify-center transition opacity-0 group-hover:opacity-100 z-10"
-              >
-                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7"/>
-                </svg>
+              <button onClick={next} className="absolute right-0.5 top-1/2 -translate-y-1/2 w-5 h-5 bg-black/60 hover:bg-black/80 rounded-full flex items-center justify-center transition opacity-0 group-hover:opacity-100 z-10">
+                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7"/></svg>
               </button>
             </>
           )}
         </div>
-
-        {/* Dot indicators */}
         {photos.length > 1 && (
           <div className="flex items-center gap-1 justify-center w-16">
             {photos.map((_, i) => (
-              <button
-                key={i}
-                onClick={e => { e.stopPropagation(); setIdx(i); }}
-                title={`Photo ${i + 1}`}
-                className={`rounded-full transition-all duration-200 flex-shrink-0 ${
-                  i === idx
-                    ? 'w-3 h-2 bg-red-500'
-                    : 'w-2 h-2 bg-gray-300 hover:bg-red-300'
-                }`}
+              <button key={i} onClick={e => { e.stopPropagation(); setIdx(i); }} title={`Photo ${i + 1}`}
+                className={`rounded-full transition-all duration-200 flex-shrink-0 ${i === idx ? 'w-3 h-2 bg-red-500' : 'w-2 h-2 bg-gray-300 hover:bg-red-300'}`}
               />
             ))}
           </div>
         )}
-
-        {/* Count label */}
-        {photos.length > 1 && (
-          <span className="text-xs text-gray-400 leading-none">{idx + 1}/{photos.length} photos</span>
-        )}
+        {photos.length > 1 && <span className="text-xs text-gray-400 leading-none">{idx + 1}/{photos.length} photos</span>}
       </div>
-
       {lightboxOpen && (
-        <DamageLightbox
-          urls={photos}
-          startIndex={idx}
-          itemNames={itemNames}
-          onClose={() => setLightboxOpen(false)}
-        />
+        <DamageLightbox urls={photos} startIndex={idx} itemNames={itemNames} onClose={() => setLightboxOpen(false)}/>
       )}
     </>
   );
@@ -285,14 +243,17 @@ export default function ReturnedTab() {
     return matchMonth && matchCond;
   });
 
+  const hasFilters = monthFilter !== 'All' || condFilter !== 'All';
+
   const totalPages = Math.ceil(filtered.length / PER_PAGE);
   const paginated  = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
   const damagedCount = all.filter(r => r.returnCondition === 'Damaged').length;
 
-  function exportCSV() {
-    const headers = ['Ref ID', 'Borrower', 'Department', 'Contact', 'Items', 'Inventory No.', 'Serial No.', 'Borrow Date', 'Due Date', 'Returned At', 'Condition', 'Notes', 'Photo Count'];
-    const rows = filtered.map(r => [
+  // ── Phase 4.1: Dual CSV export ────────────────────────────────────────────
+
+  function buildCSVRows(data: BorrowRequest[]) {
+    return data.map(r => [
       r.id, r.borrowerName, r.borrowerDepartment, r.borrowerContact,
       r.items.map(i => i.itemName).join('|'),
       r.items.map(i => i.inventoryNumber).join('|'),
@@ -301,13 +262,27 @@ export default function ReturnedTab() {
       r.returnCondition || '', r.returnNotes || '',
       resolvePhotos(r).length,
     ]);
+  }
+
+  function downloadCSV(rows: any[][], filename: string) {
+    const headers = ['Ref ID', 'Borrower', 'Department', 'Contact', 'Items', 'Inventory No.', 'Serial No.', 'Borrow Date', 'Due Date', 'Returned At', 'Condition', 'Notes', 'Photo Count'];
     const csv = [headers, ...rows]
       .map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))
       .join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = `returned-${monthFilter.replace(/\s+/g, '-')}.csv`;
+    a.download = filename;
     a.click();
+  }
+
+  function exportFiltered() {
+    const today = new Date().toISOString().split('T')[0];
+    downloadCSV(buildCSVRows(filtered), `returned-filtered-${today}.csv`);
+  }
+
+  function exportAll() {
+    const today = new Date().toISOString().split('T')[0];
+    downloadCSV(buildCSVRows(all), `returned-ALL-${today}.csv`);
   }
 
   function toggleNotes(id: string) {
@@ -354,6 +329,9 @@ export default function ReturnedTab() {
             <span className="ml-2 bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full">
               {filtered.length}
             </span>
+            {hasFilters && all.length !== filtered.length && (
+              <span className="ml-1 text-xs text-gray-400 font-normal">of {all.length} total</span>
+            )}
           </h3>
           <select
             value={condFilter}
@@ -372,12 +350,31 @@ export default function ReturnedTab() {
           >
             {months.map(m => <option key={m} value={m}>{m === 'All' ? 'All Months' : m}</option>)}
           </select>
-          <button onClick={exportCSV} className="btn-primary">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-            </svg>
-            Export CSV
-          </button>
+
+          {/* Phase 4.1: Show both export buttons when filters are active */}
+          {hasFilters ? (
+            <div className="flex gap-2">
+              <button onClick={exportFiltered} className="btn-primary">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                </svg>
+                Export Filtered ({filtered.length})
+              </button>
+              <button onClick={exportAll} className="btn-secondary flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                </svg>
+                Export All ({all.length})
+              </button>
+            </div>
+          ) : (
+            <button onClick={exportAll} className="btn-primary">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+              </svg>
+              Export CSV
+            </button>
+          )}
         </div>
 
         <div className="overflow-x-auto">
