@@ -2,7 +2,7 @@ import {
   collection, doc, addDoc, updateDoc, deleteDoc,
   onSnapshot, query, where, orderBy, serverTimestamp,
   writeBatch, increment, Unsubscribe, DocumentData, QuerySnapshot,
-  getDoc, getDocs,   // Phase 2.1 + 2.2: added getDoc and getDocs
+  getDoc, getDocs,
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import {
@@ -65,7 +65,8 @@ export function subscribeAllBorrows(cb: (reqs: BorrowRequest[]) => void): Unsubs
 
 export function subscribeVehicles(cb: (vehicles: Vehicle[]) => void): Unsubscribe {
   return onSnapshot(
-    query(collection(db, 'vehicles'), orderBy('createdAt', 'asc')),
+    // Phase C1: changed from 'asc' → 'desc' so newest vehicles appear first
+    query(collection(db, 'vehicles'), orderBy('createdAt', 'desc')),
     s => cb(s.docs.map(d => ({ id: d.id, ...d.data() } as Vehicle)))
   );
 }
@@ -94,11 +95,25 @@ async function logHistory(entry: Omit<AdminHistory, 'id' | 'timestamp'>): Promis
 
 // ─── Inventory writes ─────────────────────────────────────────────────────────
 
+// Phase A1: addInventoryItem now writes imageUrls[] as the primary field.
+// imageUrl is kept as the first element of imageUrls for backward compat reads
+// on any code that still accesses imageUrl directly.
+
 export async function addInventoryItem(
   data: Omit<InventoryItem, 'id' | 'createdAt'>,
   adminName: string
 ): Promise<string> {
-  const ref = await addDoc(collection(db, 'inventory'), { ...data, createdAt: serverTimestamp() });
+  // Normalise: derive imageUrls from whatever was passed in
+  const imageUrls = normaliseImageUrls(data.imageUrls, data.imageUrl);
+  const imageUrl  = imageUrls[0] ?? null; // keep single-field in sync
+
+  const ref = await addDoc(collection(db, 'inventory'), {
+    ...data,
+    imageUrl,
+    imageUrls,
+    createdAt: serverTimestamp(),
+  });
+
   await logHistory({
     action: 'add', itemId: ref.id, itemName: data.name, adminName,
     details: `Added: ${data.name} (${data.inventoryNumber || 'no inv no.'})`,
@@ -111,7 +126,16 @@ export async function updateInventoryItem(
   data: Partial<Omit<InventoryItem, 'id' | 'createdAt'>>,
   adminName: string
 ): Promise<void> {
-  await updateDoc(doc(db, 'inventory', itemId), data as DocumentData);
+  // Normalise images before writing
+  const imageUrls = normaliseImageUrls(data.imageUrls, data.imageUrl ?? null);
+  const imageUrl  = imageUrls[0] ?? null;
+
+  await updateDoc(doc(db, 'inventory', itemId), {
+    ...data,
+    imageUrl,
+    imageUrls,
+  } as DocumentData);
+
   await logHistory({ action: 'update', itemId, itemName, adminName, details: `Updated: ${itemName}` });
 }
 
@@ -120,6 +144,22 @@ export async function deleteInventoryItem(
 ): Promise<void> {
   await deleteDoc(doc(db, 'inventory', itemId));
   await logHistory({ action: 'delete', itemId, itemName, adminName, details: `Deleted: ${itemName}` });
+}
+
+// ─── Image normalisation helper ───────────────────────────────────────────────
+
+/**
+ * Merges imageUrls array and legacy imageUrl into a single clean string[].
+ * Ensures no duplicates and no empty strings.
+ */
+function normaliseImageUrls(
+  imageUrls: string[] | undefined,
+  imageUrl: string | null
+): string[] {
+  const base = Array.isArray(imageUrls) ? imageUrls : [];
+  // If no imageUrls but has legacy imageUrl, seed array from it
+  if (base.length === 0 && imageUrl) return [imageUrl];
+  return base.filter(Boolean);
 }
 
 // ─── Vehicle writes ───────────────────────────────────────────────────────────
@@ -151,33 +191,18 @@ export async function updateVehicle(
   });
 }
 
-// ─── Phase 2.2 — Fix vehicle delete not cleaning up expenses ─────────────────
-// Previously only deleted the vehicle document, leaving orphaned expense records
-// in Firestore. Now batch-deletes all associated expenses atomically.
-
 export async function deleteVehicle(
   vehicleId: string, vehicleName: string, adminName: string
 ): Promise<void> {
   const batch = writeBatch(db);
-
-  // Delete the vehicle document
   batch.delete(doc(db, 'vehicles', vehicleId));
-
-  // Find and batch-delete all associated expense records
   const expensesSnap = await getDocs(
     query(collection(db, 'vehicleExpenses'), where('vehicleId', '==', vehicleId))
   );
-  expensesSnap.forEach(expDoc => {
-    batch.delete(expDoc.ref);
-  });
-
+  expensesSnap.forEach(expDoc => { batch.delete(expDoc.ref); });
   await batch.commit();
-
   await logHistory({
-    action: 'delete',
-    itemId: vehicleId,
-    itemName: vehicleName,
-    adminName,
+    action: 'delete', itemId: vehicleId, itemName: vehicleName, adminName,
     details: `Deleted vehicle: ${vehicleName} and ${expensesSnap.size} expense record(s).`,
   });
 }
@@ -225,11 +250,6 @@ export async function deleteVehicleExpense(
 
 export interface SelectedBorrowItem { item: InventoryItem; quantity: number; }
 
-// ─── Phase 2.1 — Add stock validation before batch write ─────────────────────
-// Previously a race condition could write negative quantities if two admins
-// submitted borrows for the same item simultaneously. Now validates live stock
-// from Firestore before committing, throwing descriptive errors on conflict.
-
 export async function submitBorrowRequest(
   borrowerName: string,
   borrowerDepartment: string,
@@ -240,7 +260,7 @@ export async function submitBorrowRequest(
   notes: string
 ): Promise<string> {
 
-  // ── Step 1: Validate current stock against live Firestore state ──────────
+  // Step 1: Validate current stock against live Firestore state
   for (const s of selectedItems) {
     const snap = await getDoc(doc(db, 'inventory', s.item.id));
     if (!snap.exists()) {
@@ -258,7 +278,7 @@ export async function submitBorrowRequest(
     }
   }
 
-  // ── Step 2: All items confirmed available — proceed with batch write ─────
+  // Step 2: All items confirmed available — proceed with batch write
   const batch = writeBatch(db);
   const borrowRef = doc(collection(db, 'borrowRequests'));
 

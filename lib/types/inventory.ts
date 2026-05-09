@@ -15,7 +15,8 @@ export interface InventoryItem {
   officeOwner: string;
   dateAcquired: string;
   inventoryDate: string;
-  imageUrl: string | null;
+  imageUrl: string | null;        // keep — backward compat for old single-image records
+  imageUrls?: string[];           // new — multi-image support (first image = primary thumbnail)
   notes: string;
   borrowedBy: string | null;
   borrowRequestId: string | null;
@@ -47,9 +48,8 @@ export interface BorrowRequest {
   returnedAt: Timestamp | null;
   returnCondition: 'Good' | 'Fair' | 'Damaged' | null;
   returnNotes: string | null;
-  // Phase 1.1 fix: both fields present
-  damagePhotoUrl: string | null;    // keep — backward compat for old records
-  damagePhotoUrls?: string[];       // add — new multi-photo field
+  damagePhotoUrl: string | null;
+  damagePhotoUrls?: string[];
 }
 
 // ─── Admin History ────────────────────────────────────────────────────────────
@@ -82,14 +82,13 @@ export interface VehicleExpense {
   vehicleId: string;
   vehicleName: string;
   date: string;
-  // Phase 1.2 fix: changed from strict union to string — free text input
   expenseType: string;
   cost: number;
   odometer: string;
   vendor: string;
   notes: string;
-  receiptPhotoUrl: string | null;   // keep — backward compat for old records
-  receiptPhotoUrls?: string[];      // add — new multi-photo field
+  receiptPhotoUrl: string | null;
+  receiptPhotoUrls?: string[];
   createdAt: Timestamp | null;
 }
 

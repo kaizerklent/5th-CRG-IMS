@@ -3,14 +3,17 @@ import { useState, useEffect, useMemo } from 'react';
 import { InventoryItem } from '@/lib/types/inventory';
 import { subscribeAvailableInventory, submitBorrowRequest, SelectedBorrowItem } from '@/lib/firebase/firestore';
 import { useSystemSettings } from '@/lib/hooks/useSystemSettings';
+import { resolveImages, resolvePrimaryImage } from '@/lib/utils/Images';
 
 const CATS = ['All','Camera','Accessories','Cable','Projector','Lighting','Laptop','Audio','Other'];
 
 function Spinner() {
-  return <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
-  </svg>;
+  return (
+    <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+    </svg>
+  );
 }
 
 function ImgOrPlaceholder({ url, name }: { url: string|null; name: string }) {
@@ -22,7 +25,6 @@ function ImgOrPlaceholder({ url, name }: { url: string|null; name: string }) {
       </svg>;
 }
 
-/** Formats a date string (YYYY-MM-DD) into a readable label like "24 Nov 2008" */
 function formatDate(val: string): string {
   if (!val) return '—';
   const d = new Date(val + 'T00:00:00');
@@ -30,38 +32,16 @@ function formatDate(val: string): string {
   return d.toLocaleDateString('en-PH', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-/** Property sticker component — mirrors the blue 5th CRG sticker style */
 function PropertySticker({ item }: { item: InventoryItem }) {
   return (
-    <div
-      style={{
-        width: '100%',
-        maxWidth: 300,
-        background: '#1e56b0',
-        borderRadius: 10,
-        padding: '14px 16px 12px',
-        fontFamily: 'Arial, sans-serif',
-        position: 'relative',
-        overflow: 'hidden',
-        border: '2px solid #174496',
-        margin: '0 auto',
-      }}
-    >
-      {/* Subtle diagonal lines overlay */}
-      <div style={{
-        position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.05,
-        backgroundImage: 'repeating-linear-gradient(45deg, white 0px, white 1px, transparent 1px, transparent 10px)',
-      }}/>
-
-      {/* Header */}
+    <div style={{
+      width: '100%', maxWidth: 300, background: '#1e56b0', borderRadius: 10,
+      padding: '14px 16px 12px', fontFamily: 'Arial, sans-serif',
+      position: 'relative', overflow: 'hidden', border: '2px solid #174496', margin: '0 auto',
+    }}>
+      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.05, backgroundImage: 'repeating-linear-gradient(45deg, white 0px, white 1px, transparent 1px, transparent 10px)' }}/>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, gap: 8 }}>
-        <div style={{
-          width: 36, height: 36, borderRadius: '50%',
-          background: 'rgba(255,255,255,0.18)',
-          border: '1.5px solid rgba(255,255,255,0.5)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0,
-        }}>
+        <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(255,255,255,0.18)', border: '1.5px solid rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" aria-hidden="true">
             <circle cx="12" cy="12" r="9"/>
             <path d="M12 8v4l3 3" strokeLinecap="round" strokeLinejoin="round"/>
@@ -69,20 +49,12 @@ function PropertySticker({ item }: { item: InventoryItem }) {
           </svg>
         </div>
         <div style={{ textAlign: 'center', flex: 1 }}>
-          <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: 8, letterSpacing: '1.4px', textTransform: 'uppercase', margin: '0 0 2px' }}>
-            5th Civil Relations Group
-          </p>
-          <p style={{ color: 'white', fontSize: 19, fontWeight: 900, letterSpacing: '3px', textTransform: 'uppercase', margin: 0, lineHeight: 1 }}>
-            PROPERTY
-          </p>
+          <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: 8, letterSpacing: '1.4px', textTransform: 'uppercase', margin: '0 0 2px' }}>5th Civil Relations Group</p>
+          <p style={{ color: 'white', fontSize: 19, fontWeight: 900, letterSpacing: '3px', textTransform: 'uppercase', margin: 0, lineHeight: 1 }}>PROPERTY</p>
         </div>
         <div style={{ width: 36 }}/>
       </div>
-
-      {/* Divider */}
       <div style={{ height: 1, background: 'rgba(255,255,255,0.3)', marginBottom: 10 }}/>
-
-      {/* Fields */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {[
           { label: 'Office:', value: item.officeOwner },
@@ -91,38 +63,15 @@ function PropertySticker({ item }: { item: InventoryItem }) {
           { label: 'Inventory Date:', value: formatDate(item.inventoryDate) },
         ].map(({ label, value }) => (
           <div key={label} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <span style={{
-              color: 'rgba(255,255,255,0.78)', fontSize: 9.5,
-              textTransform: 'uppercase', letterSpacing: '0.7px',
-              width: 108, flexShrink: 0,
-            }}>
-              {label}
-            </span>
-            <div style={{
-              flex: 1, background: 'white', borderRadius: 3,
-              padding: '3px 8px', minHeight: 22,
-            }}>
-              <span style={{
-                color: value ? '#1a3870' : '#aab4c8',
-                fontSize: 11, fontWeight: 600,
-                fontFamily: label === 'Inventory Nr.:' ? 'monospace' : 'Arial, sans-serif',
-              }}>
-                {value || '—'}
-              </span>
+            <span style={{ color: 'rgba(255,255,255,0.78)', fontSize: 9.5, textTransform: 'uppercase', letterSpacing: '0.7px', width: 108, flexShrink: 0 }}>{label}</span>
+            <div style={{ flex: 1, background: 'white', borderRadius: 3, padding: '3px 8px', minHeight: 22 }}>
+              <span style={{ color: value ? '#1a3870' : '#aab4c8', fontSize: 11, fontWeight: 600, fontFamily: label === 'Inventory Nr.:' ? 'monospace' : 'Arial, sans-serif' }}>{value || '—'}</span>
             </div>
           </div>
         ))}
       </div>
-
-      {/* Footer */}
       <div style={{ marginTop: 10, borderTop: '1px solid rgba(255,255,255,0.2)', paddingTop: 7 }}>
-        <p style={{
-          color: 'rgba(255,255,255,0.5)', fontSize: 7.5,
-          textAlign: 'center', textTransform: 'uppercase',
-          letterSpacing: '0.9px', margin: 0,
-        }}>
-          Tampering of this sticker is punishable by law
-        </p>
+        <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 7.5, textAlign: 'center', textTransform: 'uppercase', letterSpacing: '0.9px', margin: 0 }}>Tampering of this sticker is punishable by law</p>
       </div>
     </div>
   );
@@ -144,13 +93,158 @@ function DetailField({ label, value }: { label: string; value: string | number }
   );
 }
 
-/** Expandable item row with full details + property sticker */
+// ── Image carousel for the expanded item panel ────────────────────────────────
+
+function ItemImageCarousel({ urls }: { urls: string[] }) {
+  const [idx, setIdx] = useState(0);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+
+  if (urls.length === 0) return null;
+
+  if (urls.length === 1) {
+    return (
+      <>
+        <div
+          className="w-full h-40 rounded-xl overflow-hidden bg-gray-100 cursor-pointer hover:opacity-90 transition"
+          onClick={() => setLightboxOpen(true)}
+          title="Click to enlarge"
+        >
+          <img src={urls[0]} alt="Item photo" className="w-full h-full object-cover"/>
+        </div>
+        {lightboxOpen && (
+          <CarouselLightbox urls={urls} startIndex={0} onClose={() => setLightboxOpen(false)}/>
+        )}
+      </>
+    );
+  }
+
+  const prev = (e: React.MouseEvent) => { e.stopPropagation(); setIdx(i => (i - 1 + urls.length) % urls.length); };
+  const next = (e: React.MouseEvent) => { e.stopPropagation(); setIdx(i => (i + 1) % urls.length); };
+
+  return (
+    <>
+      <div className="space-y-2">
+        {/* Main image */}
+        <div
+          className="relative w-full h-40 rounded-xl overflow-hidden bg-gray-100 cursor-pointer group"
+          onClick={() => setLightboxOpen(true)}
+          title="Click to enlarge"
+        >
+          <img src={urls[idx]} alt={`Item photo ${idx + 1}`} className="w-full h-full object-cover"/>
+
+          {/* Primary badge */}
+          {idx === 0 && (
+            <div className="absolute top-2 left-2 bg-purple-700 text-white text-xs font-semibold px-1.5 py-0.5 rounded-md pointer-events-none">
+              Primary
+            </div>
+          )}
+
+          {/* Counter */}
+          <div className="absolute top-2 right-2 bg-black/50 text-white text-xs font-medium px-2 py-0.5 rounded-md pointer-events-none">
+            {idx + 1} / {urls.length}
+          </div>
+
+          {/* Prev / Next */}
+          <button onClick={prev} className="absolute left-2 top-1/2 -translate-y-1/2 w-7 h-7 bg-black/50 hover:bg-black/75 rounded-full flex items-center justify-center transition opacity-0 group-hover:opacity-100">
+            <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/></svg>
+          </button>
+          <button onClick={next} className="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 bg-black/50 hover:bg-black/75 rounded-full flex items-center justify-center transition opacity-0 group-hover:opacity-100">
+            <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
+          </button>
+        </div>
+
+        {/* Thumbnail strip */}
+        <div className="flex gap-1.5 overflow-x-auto pb-1">
+          {urls.map((url, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => setIdx(i)}
+              className={`flex-shrink-0 w-10 h-10 rounded-lg overflow-hidden border-2 transition ${
+                i === idx ? 'border-purple-500' : 'border-transparent hover:border-gray-300'
+              }`}
+            >
+              <img src={url} alt={`Thumb ${i + 1}`} className="w-full h-full object-cover"/>
+            </button>
+          ))}
+        </div>
+
+        {/* Dot indicators */}
+        <div className="flex items-center gap-1.5 justify-center">
+          {urls.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setIdx(i)}
+              className={`rounded-full transition-all duration-200 ${
+                i === idx ? 'w-3.5 h-2 bg-purple-600' : 'w-2 h-2 bg-gray-300 hover:bg-purple-400'
+              }`}
+            />
+          ))}
+        </div>
+      </div>
+
+      {lightboxOpen && (
+        <CarouselLightbox urls={urls} startIndex={idx} onClose={() => setLightboxOpen(false)}/>
+      )}
+    </>
+  );
+}
+
+// ── Lightbox used by the carousel ─────────────────────────────────────────────
+
+function CarouselLightbox({ urls, startIndex, onClose }: { urls: string[]; startIndex: number; onClose: () => void }) {
+  const [idx, setIdx] = useState(startIndex);
+  const prev = () => setIdx(i => (i - 1 + urls.length) % urls.length);
+  const next = () => setIdx(i => (i + 1) % urls.length);
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/85 flex items-center justify-center z-[60] p-4 cursor-zoom-out"
+      onClick={onClose}
+    >
+      <div className="relative max-w-3xl w-full flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="bg-gray-900 text-white px-4 py-3 rounded-t-xl flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold">Photo {idx + 1} of {urls.length}</span>
+            {idx === 0 && <span className="text-xs bg-purple-700 text-white px-2 py-0.5 rounded-full">Primary</span>}
+          </div>
+          <button onClick={onClose} className="w-7 h-7 bg-gray-700 hover:bg-gray-600 rounded-lg flex items-center justify-center transition" aria-label="Close lightbox">
+            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+        <div className="relative bg-gray-900 rounded-b-xl overflow-hidden">
+          <img src={urls[idx]} alt={`Item photo ${idx + 1}`} className="w-full max-h-[75vh] object-contain"/>
+          {urls.length > 1 && (
+            <>
+              <button onClick={prev} className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/50 hover:bg-black/75 rounded-full flex items-center justify-center transition">
+                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/></svg>
+              </button>
+              <button onClick={next} className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/50 hover:bg-black/75 rounded-full flex items-center justify-center transition">
+                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
+              </button>
+            </>
+          )}
+        </div>
+        {urls.length > 1 && (
+          <div className="flex items-center gap-1.5 justify-center mt-3">
+            {urls.map((_, i) => (
+              <button key={i} onClick={() => setIdx(i)}
+                className={`rounded-full transition-all duration-200 ${i === idx ? 'w-4 h-2.5 bg-white' : 'w-2.5 h-2.5 bg-white/40 hover:bg-white/70'}`}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Expandable item row ───────────────────────────────────────────────────────
+
 function ItemRow({
-  item,
-  isSelected,
-  onToggle,
-  quantity,
-  onSetQty,
+  item, isSelected, onToggle, quantity, onSetQty,
 }: {
   item: InventoryItem;
   isSelected: boolean;
@@ -160,19 +254,22 @@ function ItemRow({
 }) {
   const [expanded, setExpanded] = useState(false);
 
+  // Resolve all images for this item (backward compat)
+  const imgs       = resolveImages(item);
+  const primaryImg = imgs[0] ?? null;
+
   return (
     <div className={`border-b border-gray-100 transition ${isSelected ? 'bg-purple-50' : 'bg-white'}`}>
-      {/* Main row */}
+      {/* ── Collapsed row ── */}
       <div className="flex items-center gap-3 px-5 py-3.5">
-        {/* Checkbox toggle */}
+
+        {/* Checkbox */}
         <button
           type="button"
           onClick={onToggle}
           aria-label={isSelected ? `Deselect ${item.name}` : `Select ${item.name}`}
           className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border transition
-            ${isSelected
-              ? 'bg-purple-600 border-purple-600'
-              : 'border-gray-300 hover:border-purple-400 bg-white'}`}
+            ${isSelected ? 'bg-purple-600 border-purple-600' : 'border-gray-300 hover:border-purple-400 bg-white'}`}
         >
           {isSelected && (
             <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -181,12 +278,17 @@ function ItemRow({
           )}
         </button>
 
-        {/* Thumbnail */}
+        {/* Thumbnail — shows multi-photo badge if multiple images */}
         <div
-          className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer"
+          className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer relative"
           onClick={onToggle}
         >
-          <ImgOrPlaceholder url={item.imageUrl} name={item.name}/>
+          <ImgOrPlaceholder url={primaryImg} name={item.name}/>
+          {imgs.length > 1 && (
+            <div className="absolute -bottom-0.5 -right-0.5 bg-purple-600 text-white text-xs font-bold w-4 h-4 rounded-full flex items-center justify-center leading-none pointer-events-none">
+              {imgs.length}
+            </div>
+          )}
         </div>
 
         {/* Name + meta */}
@@ -206,13 +308,10 @@ function ItemRow({
           type="button"
           onClick={() => setExpanded(p => !p)}
           aria-label={expanded ? 'Collapse item details' : 'Expand item details'}
-          aria-expanded={expanded ? 'true' : 'false'}
+          aria-expanded={expanded}
           className="p-1.5 rounded-lg text-gray-400 hover:text-purple-700 hover:bg-purple-50 transition flex-shrink-0"
         >
-          <svg
-            className={`w-4 h-4 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
-            fill="none" viewBox="0 0 24 24" stroke="currentColor"
-          >
+          <svg className={`w-4 h-4 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/>
           </svg>
         </button>
@@ -222,10 +321,13 @@ function ItemRow({
       {expanded && (
         <div className="px-5 pb-5 pt-1 border-t border-gray-100 space-y-4 bg-white">
 
-          {/* Item image (large) */}
-          {item.imageUrl && (
-            <div className="w-full h-40 rounded-xl overflow-hidden bg-gray-100">
-              <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover"/>
+          {/* Multi-image carousel — only rendered when images exist */}
+          {imgs.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                Photos ({imgs.length})
+              </p>
+              <ItemImageCarousel urls={imgs}/>
             </div>
           )}
 
@@ -262,22 +364,16 @@ function ItemRow({
             <PropertySticker item={item}/>
           </div>
 
-          {/* Quick-add / qty controls inside panel */}
+          {/* Quick-add / qty controls */}
           <div className="flex items-center gap-3 pt-1">
             {isSelected && !item.isUnique && (
               <div className="flex items-center gap-2">
                 <span className="text-xs text-gray-600 font-medium">Qty:</span>
-                <button
-                  type="button"
-                  onClick={() => onSetQty(quantity - 1)}
-                  className="w-7 h-7 rounded-lg border border-gray-200 text-gray-600 text-sm flex items-center justify-center hover:bg-gray-50 transition"
-                >−</button>
+                <button type="button" onClick={() => onSetQty(quantity - 1)}
+                  className="w-7 h-7 rounded-lg border border-gray-200 text-gray-600 text-sm flex items-center justify-center hover:bg-gray-50 transition">−</button>
                 <span className="text-sm font-semibold w-6 text-center">{quantity}</span>
-                <button
-                  type="button"
-                  onClick={() => onSetQty(quantity + 1)}
-                  className="w-7 h-7 rounded-lg border border-gray-200 text-gray-600 text-sm flex items-center justify-center hover:bg-gray-50 transition"
-                >+</button>
+                <button type="button" onClick={() => onSetQty(quantity + 1)}
+                  className="w-7 h-7 rounded-lg border border-gray-200 text-gray-600 text-sm flex items-center justify-center hover:bg-gray-50 transition">+</button>
               </div>
             )}
             <button
@@ -297,6 +393,8 @@ function ItemRow({
   );
 }
 
+// ─── Main BorrowTab ───────────────────────────────────────────────────────────
+
 export default function BorrowTab() {
   const settings = useSystemSettings();
 
@@ -315,7 +413,7 @@ export default function BorrowTab() {
   const [success, setSuccess]       = useState(false);
   const [error, setError]           = useState<string|null>(null);
 
-  // Pre-fill return date from setting once settings load from localStorage
+  // Pre-fill return date from settings
   const defaultReturn = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() + settings.defaultReturnDays);
@@ -323,7 +421,6 @@ export default function BorrowTab() {
   }, [settings.defaultReturnDays]);
 
   useEffect(() => {
-    // Only pre-fill if user hasn't already typed something
     setReturnDate(prev => prev || defaultReturn);
   }, [defaultReturn]);
 
@@ -372,8 +469,9 @@ export default function BorrowTab() {
       setReturnDate(''); setNotes('');
       setBorrowDate(new Date().toISOString().split('T')[0]);
       setSuccess(true); setTimeout(() => setSuccess(false), 4000);
-    } catch { setError('Failed to submit. Please try again.'); }
-    finally { setSubmitting(false); }
+    } catch (err: any) {
+      setError(err?.message || 'Failed to submit. Please try again.');
+    } finally { setSubmitting(false); }
   }
 
   return (
@@ -402,7 +500,9 @@ export default function BorrowTab() {
                 </span>
               )}
             </div>
-            <p className="text-xs text-gray-400">Click the arrow ↓ on any item to see full details &amp; property sticker.</p>
+            <p className="text-xs text-gray-400">
+              Click the arrow ↓ on any item to see full details, photos &amp; property sticker.
+            </p>
             <input
               type="text"
               placeholder="Search by name, inventory no., serial no."
@@ -444,28 +544,25 @@ export default function BorrowTab() {
               <p className="text-xs font-semibold text-purple-700 mb-2">Selected ({selected.length})</p>
               {selected.map(s => (
                 <div key={s.item.id} className="flex items-center gap-2 mb-1.5">
+                  {/* Mini thumbnail in summary strip */}
+                  <div className="w-6 h-6 rounded bg-gray-200 overflow-hidden flex-shrink-0">
+                    {resolvePrimaryImage(s.item)
+                      ? <img src={resolvePrimaryImage(s.item)!} alt={s.item.name} className="w-full h-full object-cover"/>
+                      : <div className="w-full h-full bg-gray-200"/>
+                    }
+                  </div>
                   <span className="text-xs text-gray-700 flex-1 truncate">{s.item.name}</span>
                   {!s.item.isUnique && (
                     <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => setQty(s.item.id, s.quantity - 1)}
-                        className="w-6 h-6 rounded bg-white border border-gray-200 text-gray-600 text-xs flex items-center justify-center hover:bg-gray-50"
-                      >−</button>
+                      <button type="button" onClick={() => setQty(s.item.id, s.quantity - 1)}
+                        className="w-6 h-6 rounded bg-white border border-gray-200 text-gray-600 text-xs flex items-center justify-center hover:bg-gray-50">−</button>
                       <span className="text-xs w-5 text-center font-medium">{s.quantity}</span>
-                      <button
-                        type="button"
-                        onClick={() => setQty(s.item.id, s.quantity + 1)}
-                        className="w-6 h-6 rounded bg-white border border-gray-200 text-gray-600 text-xs flex items-center justify-center hover:bg-gray-50"
-                      >+</button>
+                      <button type="button" onClick={() => setQty(s.item.id, s.quantity + 1)}
+                        className="w-6 h-6 rounded bg-white border border-gray-200 text-gray-600 text-xs flex items-center justify-center hover:bg-gray-50">+</button>
                     </div>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => toggle(s.item)}
-                    aria-label={`Remove ${s.item.name}`}
-                    className="text-gray-400 hover:text-red-500 transition"
-                  >
+                  <button type="button" onClick={() => toggle(s.item)} aria-label={`Remove ${s.item.name}`}
+                    className="text-gray-400 hover:text-red-500 transition">
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
                     </svg>
@@ -512,8 +609,7 @@ export default function BorrowTab() {
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Notes <span className="text-xs text-gray-400 font-normal">(optional)</span></label>
               <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2}
-                placeholder="Any notes about this borrow..."
-                className="input-base resize-none"/>
+                placeholder="Any notes about this borrow..." className="input-base resize-none"/>
             </div>
             <button type="submit" disabled={submitting || selected.length === 0} className="btn-primary w-full py-3">
               {submitting
