@@ -18,6 +18,7 @@ export interface InventoryItem {
   imageUrl: string | null;        // keep — backward compat for old single-image records
   imageUrls?: string[];           // new — multi-image support (first image = primary thumbnail)
   notes: string;
+  value: number | null;
   borrowedBy: string | null;
   borrowRequestId: string | null;
   createdAt: Timestamp | null;
@@ -52,11 +53,19 @@ export interface BorrowRequest {
   damagePhotoUrls?: string[];
 }
 
+// ─── Custom Categories (Feature B) ────────────────────────────────────────────
+
+export interface CustomCategory {
+  id: string;
+  name: string;
+  createdAt: Timestamp | null;
+}
+
 // ─── Admin History ────────────────────────────────────────────────────────────
 
 export interface AdminHistory {
   id: string;
-  action: 'add' | 'update' | 'delete';
+  action: 'add' | 'update' | 'delete' | 'turnedIn';
   itemId: string;
   itemName: string;
   adminName: string;
@@ -90,6 +99,27 @@ export interface VehicleExpense {
   receiptPhotoUrl: string | null;
   receiptPhotoUrls?: string[];
   createdAt: Timestamp | null;
+}
+
+// ─── Tab IDs ──────────────────────────────────────────────────────────────────
+
+// ─── Shared Tab Props ─────────────────────────────────────────────────────────
+
+export interface SharedInventoryProps {
+  items: InventoryItem[];
+  loadingInventory: boolean;
+}
+
+export interface SharedBorrowProps {
+  activeBorrows: BorrowRequest[];
+  allBorrows: BorrowRequest[];
+  loadingBorrows: boolean;
+}
+
+export interface SharedVehicleProps {
+  vehicles: Vehicle[];
+  expenses: VehicleExpense[];
+  loadingVehicles: boolean;
 }
 
 // ─── Tab IDs ──────────────────────────────────────────────────────────────────

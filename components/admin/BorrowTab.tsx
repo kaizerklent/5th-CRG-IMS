@@ -1,11 +1,9 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
-import { InventoryItem } from '@/lib/types/inventory';
-import { subscribeAvailableInventory, submitBorrowRequest, SelectedBorrowItem } from '@/lib/firebase/firestore';
+import { InventoryItem, CustomCategory } from '@/lib/types/inventory';
+import { submitBorrowRequest, SelectedBorrowItem } from '@/lib/firebase/firestore';
 import { useSystemSettings } from '@/lib/hooks/useSystemSettings';
 import { resolveImages, resolvePrimaryImage } from '@/lib/utils/Images';
-
-const CATS = ['All','Camera','Accessories','Cable','Projector','Lighting','Laptop','Audio','Other'];
 
 function Spinner() {
   return (
@@ -395,11 +393,15 @@ function ItemRow({
 
 // ─── Main BorrowTab ───────────────────────────────────────────────────────────
 
-export default function BorrowTab() {
+interface BorrowTabProps {
+  items: InventoryItem[];
+  loadingItems: boolean;
+  categories: CustomCategory[];
+}
+
+export default function BorrowTab({ items, loadingItems, categories }: BorrowTabProps) {
   const settings = useSystemSettings();
 
-  const [items, setItems]           = useState<InventoryItem[]>([]);
-  const [loadingItems, setLoading]  = useState(true);
   const [search, setSearch]         = useState('');
   const [cat, setCat]               = useState('All');
   const [selected, setSelected]     = useState<SelectedBorrowItem[]>([]);
@@ -423,10 +425,6 @@ export default function BorrowTab() {
   useEffect(() => {
     setReturnDate(prev => prev || defaultReturn);
   }, [defaultReturn]);
-
-  useEffect(() => {
-    return subscribeAvailableInventory(data => { setItems(data); setLoading(false); });
-  }, []);
 
   // Remove selected items that became unavailable in real-time
   useEffect(() => {
@@ -516,7 +514,8 @@ export default function BorrowTab() {
               aria-label="Filter by category"
               className="input-base bg-white"
             >
-              {CATS.map(c => <option key={c} value={c}>{c === 'All' ? 'All Categories' : c}</option>)}
+              <option value="All">All Categories</option>
+              {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
             </select>
           </div>
 

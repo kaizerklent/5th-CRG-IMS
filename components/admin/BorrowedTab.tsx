@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useMemo, useRef, useCallback, DragEvent, ChangeEvent } from 'react';
 import { BorrowRequest } from '@/lib/types/inventory';
-import { subscribeActiveBorrows, markReturned } from '@/lib/firebase/firestore';
+import { markReturned } from '@/lib/firebase/firestore';
 import { uploadToCloudinary } from '@/lib/cloudinary';
 import { useSystemSettings } from '@/lib/hooks/useSystemSettings';
 
@@ -368,12 +368,15 @@ function ReturnModal({ req, onClose, onConfirm }: {
 
 // ─── BorrowedTab ──────────────────────────────────────────────────────────────
 
-export default function BorrowedTab() {
+interface BorrowedTabProps {
+  requests: BorrowRequest[];
+  loading: boolean;
+}
+
+export default function BorrowedTab({ requests, loading }: BorrowedTabProps) {
   const settings = useSystemSettings();
   const PER_PAGE = settings.itemsPerPage;
 
-  const [requests, setRequests]   = useState<BorrowRequest[]>([]);
-  const [loading, setLoading]     = useState(true);
   const [page, setPage]           = useState(1);
   const [returning, setReturning] = useState<BorrowRequest | null>(null);
 
@@ -389,10 +392,6 @@ export default function BorrowedTab() {
 
   const daysOver = (rd: string) =>
     Math.ceil((new Date(today).getTime() - new Date(rd).getTime()) / 86400000);
-
-  useEffect(() => {
-    return subscribeActiveBorrows(data => { setRequests(data); setLoading(false); });
-  }, []);
 
   const totalPages = Math.ceil(requests.length / PER_PAGE);
   const paginated  = requests.slice((page - 1) * PER_PAGE, page * PER_PAGE);

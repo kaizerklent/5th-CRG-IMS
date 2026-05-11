@@ -12,6 +12,7 @@ import {
   BorrowedItem,
   Vehicle,
   VehicleExpense,
+  CustomCategory,
 } from '../types/inventory';
 
 // ─── Snapshot helpers ────────────────────────────────────────────────────────
@@ -85,6 +86,73 @@ export function subscribeVehicleExpenses(
   return onSnapshot(q, s =>
     cb(s.docs.map(d => ({ id: d.id, ...d.data() } as VehicleExpense)))
   );
+}
+
+// ─── Custom Categories (Feature B) ────────────────────────────────────────────
+
+const DEFAULT_CATEGORIES = ['Camera', 'Accessories', 'Cable', 'Projector', 'Lighting', 'Laptop', 'Audio', 'Other'];
+
+export function subscribeCategories(cb: (cats: CustomCategory[]) => void): Unsubscribe {
+  return onSnapshot(
+    query(collection(db, 'categories'), orderBy('name', 'asc')),
+    s => cb(s.docs.map(d => ({ id: d.id, ...d.data() } as CustomCategory)))
+  );
+}
+
+function normalizeCategoryName(name: string): string {
+  return name.trim();
+}
+
+export async function addCategory(name: string, adminName: string): Promise<string> {
+  const normalized = normalizeCategoryName(name);
+  if (!normalized) throw new Error('Category name is required.');
+
+  // Check for duplicates (case-insensitive) by reading current docs
+  const snap = await getDocs(collection(db, 'categories'));
+  const exists = snap.docs.some(d => {
+    const data = d.data() as CustomCategory;
+    return data.name.toLowerCase() === normalized.toLowerCase();
+  });
+  if (exists) throw new Error(`Category "${normalized}" already exists.`);
+
+  const ref = await addDoc(collection(db, 'categories'), {
+    name: normalized,
+    createdAt: serverTimestamp(),
+  });
+
+  await logHistory({
+    action: 'add',
+    itemId: ref.id,
+    itemName: normalized,
+    adminName,
+    details: `Added category: ${normalized}`,
+  });
+
+  return ref.id;
+}
+
+export async function deleteCategory(id: string, name: string, adminName: string): Promise<void> {
+  await deleteDoc(doc(db, 'categories', id));
+
+  await logHistory({
+    action: 'delete',
+    itemId: id,
+    itemName: name,
+    adminName,
+    details: `Deleted category: ${name}`,
+  });
+}
+
+export async function seedDefaultCategories(): Promise<void> {
+  const snap = await getDocs(collection(db, 'categories'));
+  if (!snap.empty) return; // idempotent — only seed when empty
+
+  const batch = writeBatch(db);
+  for (const name of DEFAULT_CATEGORIES) {
+    const ref = doc(collection(db, 'categories'));
+    batch.set(ref, { name, createdAt: serverTimestamp() });
+  }
+  await batch.commit();
 }
 
 // ─── Admin history ────────────────────────────────────────────────────────────
@@ -233,6 +301,28 @@ export async function updateVehicleExpense(
   await logHistory({
     action: 'update', itemId: expenseId, itemName: data.vehicleName || expenseId, adminName,
     details: `Updated expense: ${data.expenseType} for ${data.vehicleName}`,
+  });
+}
+
+// ─── Turn In (Feature: Turned In) ────────────────────────────────────────────
+
+export async function markTurnedIn(
+  item: InventoryItem,
+  turnInNotes: string,
+  adminName: string
+): Promise<void> {
+  if (item.borrowedBy) {
+    throw new Error(`"${item.name}" is currently borrowed by ${item.borrowedBy}. It must be returned before it can be turned in.`);
+  }
+
+  await deleteDoc(doc(db, 'inventory', item.id));
+
+  await logHistory({
+    action: 'turnedIn',
+    itemId: item.id,
+    itemName: item.name,
+    adminName,
+    details: `Turned In: ${item.name}${item.inventoryNumber ? ` (${item.inventoryNumber})` : ''} — sent to central storage.${turnInNotes ? ` Notes: ${turnInNotes}` : ''}`,
   });
 }
 

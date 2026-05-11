@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/lib/firebase/AuthContext';
-import { subscribeAllBorrows, subscribeInventory, subscribeVehicles, subscribeVehicleExpenses, markReturned } from '@/lib/firebase/firestore';
+import { markReturned } from '@/lib/firebase/firestore';
 import { BorrowRequest, InventoryItem, Vehicle, VehicleExpense, TabId } from '@/lib/types/inventory';
 import { useSystemSettings } from '@/lib/hooks/useSystemSettings';
 
@@ -465,30 +465,23 @@ function BorrowerDrawer({
 
 // ── Main Dashboard ──────────────────────────────────────────────────────────
 
-export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) => void }) {
+interface DashboardTabProps {
+  onNavigate: (t: TabId) => void;
+  items: InventoryItem[];
+  borrows: BorrowRequest[];
+  vehicles: Vehicle[];
+  vExpenses: VehicleExpense[];
+  loading: boolean;
+}
+
+export default function DashboardTab({ onNavigate, items, borrows, vehicles, vExpenses, loading }: DashboardTabProps) {
   const { user } = useAuth();
   const name = user?.displayName || user?.email || 'Admin';
   const settings = useSystemSettings();
 
-  const [borrows, setBorrows]     = useState<BorrowRequest[]>([]);
-  const [items, setItems]         = useState<InventoryItem[]>([]);
-  const [vehicles, setVehicles]   = useState<Vehicle[]>([]);
-  const [vExpenses, setVExpenses] = useState<VehicleExpense[]>([]);
-  const [loadingBorrows, setLoadingBorrows]   = useState(true);
-  const [loadingItems, setLoadingItems]       = useState(true);
-  const [loadingVehicles, setLoadingVehicles] = useState(true);
-  const [loadingVExp, setLoadingVExp]         = useState(true);
-  const [activeBorrow, setActiveBorrow]       = useState<BorrowRequest | null>(null);
+  const [activeBorrow, setActiveBorrow] = useState<BorrowRequest | null>(null);
 
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
-
-  useEffect(() => {
-    const unsubBorrows   = subscribeAllBorrows(data => { setBorrows(data);   setLoadingBorrows(false); });
-    const unsubInventory = subscribeInventory(data  => { setItems(data);     setLoadingItems(false); });
-    const unsubVehicles  = subscribeVehicles(data   => { setVehicles(data);  setLoadingVehicles(false); });
-    const unsubVExp      = subscribeVehicleExpenses(null, data => { setVExpenses(data); setLoadingVExp(false); });
-    return () => { unsubBorrows(); unsubInventory(); unsubVehicles(); unsubVExp(); };
-  }, []);
 
   // When a borrow gets returned via quick return, sync activeBorrow if it was that borrow
   useEffect(() => {
@@ -536,8 +529,6 @@ export default function DashboardTab({ onNavigate }: { onNavigate: (t: TabId) =>
       total: vExpenses.filter(e => e.vehicleId === v.id).reduce((s, e) => s + e.cost, 0),
     })).sort((a, b) => b.total - a.total);
   }, [vehicles, vExpenses]);
-
-  const loading = loadingBorrows || loadingItems || loadingVehicles || loadingVExp;
 
   const borrowerBtn = (r: BorrowRequest) => (
     <button onClick={() => setActiveBorrow(r)} className="font-medium text-purple-700 hover:underline text-left">

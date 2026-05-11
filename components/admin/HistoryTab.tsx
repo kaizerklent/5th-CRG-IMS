@@ -1,7 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { BorrowRequest, AdminHistory } from '@/lib/types/inventory';
-import { subscribeAllBorrows } from '@/lib/firebase/firestore';
 import {
   collection, query, orderBy, onSnapshot, limit,
   startAfter, getDocs, DocumentSnapshot,
@@ -169,9 +168,10 @@ function DamagePhotosCarousel({ req }: { req: BorrowRequest }) {
 }
 
 const ACTION_STYLES: Record<string, { badge: string; icon: string; iconPath: string }> = {
-  add:    { badge: 'bg-green-100 text-green-700', icon: 'text-green-600', iconPath: 'M12 4v16m8-8H4' },
-  update: { badge: 'bg-blue-100 text-blue-700',  icon: 'text-blue-600',  iconPath: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' },
-  delete: { badge: 'bg-red-100 text-red-700',    icon: 'text-red-600',   iconPath: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16' },
+  add:      { badge: 'bg-green-100 text-green-700',   icon: 'text-green-600',  iconPath: 'M12 4v16m8-8H4' },
+  update:   { badge: 'bg-blue-100 text-blue-700',     icon: 'text-blue-600',   iconPath: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' },
+  delete:   { badge: 'bg-red-100 text-red-700',       icon: 'text-red-600',    iconPath: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16' },
+  turnedIn: { badge: 'bg-orange-100 text-orange-700', icon: 'text-orange-600', iconPath: 'M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8l1 12a2 2 0 002 2h8a2 2 0 002-2L19 8M10 12v6m4-6v6' },
 };
 
 function fmtTs(ts: any): string {
@@ -197,7 +197,7 @@ function InventoryActivityLog() {
   const [hasMore, setHasMore]         = useState(true);
   const lastDocRef                    = useRef<DocumentSnapshot | null>(null);
 
-  const [actionFilter, setActionFilter] = useState<'all' | 'add' | 'update' | 'delete'>('all');
+  const [actionFilter, setActionFilter] = useState<'all' | 'add' | 'update' | 'delete' | 'turnedIn'>('all');
   const [search, setSearch]   = useState('');
   const [from, setFrom]       = useState('');
   const [to, setTo]           = useState('');
@@ -285,6 +285,7 @@ function InventoryActivityLog() {
               <option value="add">Added</option>
               <option value="update">Updated</option>
               <option value="delete">Deleted</option>
+              <option value="turnedIn">Turned In</option>
             </select>
           </div>
           <div>
@@ -420,12 +421,15 @@ function InventoryActivityLog() {
 
 // ─── Borrow Logbook Sub-tab ───────────────────────────────────────────────────
 
-function BorrowLogbook() {
+interface BorrowLogbookProps {
+  borrows: BorrowRequest[];
+  loading: boolean;
+}
+
+function BorrowLogbook({ borrows, loading }: BorrowLogbookProps) {
   const settings = useSystemSettings();
   const PER_PAGE = settings.itemsPerPage;
 
-  const [all, setAll] = useState<BorrowRequest[]>([]);
-  const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState<'All' | 'Approved' | 'Returned'>('All');
   const [condFilter, setCondFilter] = useState<'All' | 'Good' | 'Fair' | 'Damaged'>('All');
   const [from, setFrom] = useState('');
@@ -433,11 +437,7 @@ function BorrowLogbook() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
 
-  useEffect(() => {
-    return subscribeAllBorrows(data => { setAll(data); setLoading(false); });
-  }, []);
-
-  const filtered = all.filter(r => {
+  const filtered = borrows.filter(r => {
     const q = search.toLowerCase();
     const matchCond = condFilter === 'All' || r.returnCondition === condFilter;
     return (
@@ -453,7 +453,7 @@ function BorrowLogbook() {
   const totalPages = Math.ceil(filtered.length / PER_PAGE);
   const paginated = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
   const hasFilters = search || from || to || status !== 'All' || condFilter !== 'All';
-  const damagedCount = all.filter(r => r.returnCondition === 'Damaged').length;
+  const damagedCount = borrows.filter(r => r.returnCondition === 'Damaged').length;
 
   function clear() { setSearch(''); setFrom(''); setTo(''); setStatus('All'); setCondFilter('All'); setPage(1); }
 
@@ -594,7 +594,12 @@ function BorrowLogbook() {
 
 type SubTab = 'borrows' | 'inventory';
 
-export default function HistoryTab() {
+interface HistoryTabProps {
+  allBorrows: BorrowRequest[];
+  loadingBorrows: boolean;
+}
+
+export default function HistoryTab({ allBorrows, loadingBorrows }: HistoryTabProps) {
   const [subTab, setSubTab] = useState<SubTab>('borrows');
 
   return (
@@ -609,7 +614,9 @@ export default function HistoryTab() {
           🗂️ Inventory Activity
         </button>
       </div>
-      {subTab === 'borrows' ? <BorrowLogbook/> : <InventoryActivityLog/>}
+      {subTab === 'borrows'
+        ? <BorrowLogbook borrows={allBorrows} loading={loadingBorrows} />
+        : <InventoryActivityLog/>}
     </div>
   );
 }

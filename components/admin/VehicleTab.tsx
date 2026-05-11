@@ -1,8 +1,7 @@
 'use client';
-import { useState, useEffect, useMemo, useRef, useCallback, DragEvent, ChangeEvent } from 'react';
+import { useState, useMemo, useRef, useCallback, DragEvent, ChangeEvent } from 'react';
 import { useAuth } from '@/lib/firebase/AuthContext';
 import {
-  subscribeVehicles, subscribeVehicleExpenses,
   addVehicle, updateVehicle, deleteVehicle,
   addVehicleExpense, updateVehicleExpense, deleteVehicleExpense,
 } from '@/lib/firebase/firestore';
@@ -586,14 +585,15 @@ function ExpenseModal({
 
 type SubView = 'overview' | 'expenses' | 'reports';
 
-export default function VehicleTab() {
+interface VehicleTabProps {
+  vehicles: Vehicle[];
+  expenses: VehicleExpense[];
+  loading: boolean;
+}
+
+export default function VehicleTab({ vehicles, expenses, loading }: VehicleTabProps) {
   const { user } = useAuth();
   const adminName = user?.displayName || user?.email || 'Admin';
-
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [expenses, setExpenses] = useState<VehicleExpense[]>([]);
-  const [loadingV, setLoadingV] = useState(true);
-  const [loadingE, setLoadingE] = useState(true);
 
   const [subView, setSubView]         = useState<SubView>('overview');
   const [selectedVId, setSelectedVId] = useState<string | null>(null);
@@ -625,17 +625,6 @@ export default function VehicleTab() {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
-
-  useEffect(() => {
-    const unsub = subscribeVehicles(v => { setVehicles(v); setLoadingV(false); });
-    return unsub;
-  }, []);
-
-  useEffect(() => {
-    setLoadingE(true);
-    const unsub = subscribeVehicleExpenses(null, e => { setExpenses(e); setLoadingE(false); });
-    return unsub;
-  }, []);
 
   const selectedVehicle = vehicles.find(v => v.id === selectedVId) ?? null;
   const expensesForVehicle = (vid: string) => expenses.filter(e => e.vehicleId === vid);
@@ -786,8 +775,6 @@ export default function VehicleTab() {
   }
 
   // ─── Render ─────────────────────────────────────────────────────────────────
-
-  const loading = loadingV || loadingE;
 
   return (
     <div className=" space-y-4">

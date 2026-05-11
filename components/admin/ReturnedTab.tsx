@@ -1,7 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { BorrowRequest } from '@/lib/types/inventory';
-import { subscribeReturnedBorrows } from '@/lib/firebase/firestore';
 import { useSystemSettings } from '@/lib/hooks/useSystemSettings';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -219,25 +218,24 @@ function DamagePhotosCell({ req }: { req: BorrowRequest }) {
 
 // ─── Main ReturnedTab ─────────────────────────────────────────────────────────
 
-export default function ReturnedTab() {
+interface ReturnedTabProps {
+  requests: BorrowRequest[];
+  loading: boolean;
+}
+
+export default function ReturnedTab({ requests, loading }: ReturnedTabProps) {
   const settings = useSystemSettings();
   const PER_PAGE = settings.itemsPerPage;
-  const [all, setAll]           = useState<BorrowRequest[]>([]);
-  const [loading, setLoading]   = useState(true);
   const [monthFilter, setMonth] = useState('All');
   const [condFilter, setCond]   = useState<'All' | 'Good' | 'Fair' | 'Damaged'>('All');
   const [page, setPage]         = useState(1);
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    return subscribeReturnedBorrows(data => { setAll(data); setLoading(false); });
-  }, []);
-
   const months = ['All', ...Array.from(new Set(
-    all.filter(r => r.returnedAt).map(r => monthLabel(r.returnedAt))
+    requests.filter(r => r.returnedAt).map(r => monthLabel(r.returnedAt))
   ))];
 
-  const filtered = all.filter(r => {
+  const filtered = requests.filter(r => {
     const matchMonth = monthFilter === 'All' || (r.returnedAt && monthLabel(r.returnedAt) === monthFilter);
     const matchCond  = condFilter === 'All' || r.returnCondition === condFilter;
     return matchMonth && matchCond;
@@ -248,7 +246,7 @@ export default function ReturnedTab() {
   const totalPages = Math.ceil(filtered.length / PER_PAGE);
   const paginated  = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
-  const damagedCount = all.filter(r => r.returnCondition === 'Damaged').length;
+  const damagedCount = requests.filter(r => r.returnCondition === 'Damaged').length;
 
   // ── Phase 4.1: Dual CSV export ────────────────────────────────────────────
 
@@ -282,7 +280,7 @@ export default function ReturnedTab() {
 
   function exportAll() {
     const today = new Date().toISOString().split('T')[0];
-    downloadCSV(buildCSVRows(all), `returned-ALL-${today}.csv`);
+    downloadCSV(buildCSVRows(requests), `returned-ALL-${today}.csv`);
   }
 
   function toggleNotes(id: string) {
@@ -329,8 +327,8 @@ export default function ReturnedTab() {
             <span className="ml-2 bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full">
               {filtered.length}
             </span>
-            {hasFilters && all.length !== filtered.length && (
-              <span className="ml-1 text-xs text-gray-400 font-normal">of {all.length} total</span>
+            {hasFilters && requests.length !== filtered.length && (
+              <span className="ml-1 text-xs text-gray-400 font-normal">of {requests.length} total</span>
             )}
           </h3>
           <select
@@ -364,7 +362,7 @@ export default function ReturnedTab() {
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
                 </svg>
-                Export All ({all.length})
+                Export All ({requests.length})
               </button>
             </div>
           ) : (
