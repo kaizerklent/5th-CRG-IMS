@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { InventoryItem, CustomCategory } from '@/lib/types/inventory';
-import { submitBorrowRequest, SelectedBorrowItem } from '@/lib/firebase/firestore';
+import { subscribeAvailableInventory, submitBorrowRequest, SelectedBorrowItem, subscribeCategories } from '@/lib/firebase/firestore';
 import { useSystemSettings } from '@/lib/hooks/useSystemSettings';
 import { resolveImages, resolvePrimaryImage } from '@/lib/utils/Images';
 
@@ -122,27 +122,20 @@ function ItemImageCarousel({ urls }: { urls: string[] }) {
   return (
     <>
       <div className="space-y-2">
-        {/* Main image */}
         <div
           className="relative w-full h-40 rounded-xl overflow-hidden bg-gray-100 cursor-pointer group"
           onClick={() => setLightboxOpen(true)}
           title="Click to enlarge"
         >
           <img src={urls[idx]} alt={`Item photo ${idx + 1}`} className="w-full h-full object-cover"/>
-
-          {/* Primary badge */}
           {idx === 0 && (
             <div className="absolute top-2 left-2 bg-purple-700 text-white text-xs font-semibold px-1.5 py-0.5 rounded-md pointer-events-none">
               Primary
             </div>
           )}
-
-          {/* Counter */}
           <div className="absolute top-2 right-2 bg-black/50 text-white text-xs font-medium px-2 py-0.5 rounded-md pointer-events-none">
             {idx + 1} / {urls.length}
           </div>
-
-          {/* Prev / Next */}
           <button onClick={prev} className="absolute left-2 top-1/2 -translate-y-1/2 w-7 h-7 bg-black/50 hover:bg-black/75 rounded-full flex items-center justify-center transition opacity-0 group-hover:opacity-100">
             <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/></svg>
           </button>
@@ -150,37 +143,21 @@ function ItemImageCarousel({ urls }: { urls: string[] }) {
             <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
           </button>
         </div>
-
-        {/* Thumbnail strip */}
         <div className="flex gap-1.5 overflow-x-auto pb-1">
           {urls.map((url, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => setIdx(i)}
-              className={`flex-shrink-0 w-10 h-10 rounded-lg overflow-hidden border-2 transition ${
-                i === idx ? 'border-purple-500' : 'border-transparent hover:border-gray-300'
-              }`}
-            >
+            <button key={i} type="button" onClick={() => setIdx(i)}
+              className={`flex-shrink-0 w-10 h-10 rounded-lg overflow-hidden border-2 transition ${i === idx ? 'border-purple-500' : 'border-transparent hover:border-gray-300'}`}>
               <img src={url} alt={`Thumb ${i + 1}`} className="w-full h-full object-cover"/>
             </button>
           ))}
         </div>
-
-        {/* Dot indicators */}
         <div className="flex items-center gap-1.5 justify-center">
           {urls.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setIdx(i)}
-              className={`rounded-full transition-all duration-200 ${
-                i === idx ? 'w-3.5 h-2 bg-purple-600' : 'w-2 h-2 bg-gray-300 hover:bg-purple-400'
-              }`}
-            />
+            <button key={i} onClick={() => setIdx(i)}
+              className={`rounded-full transition-all duration-200 ${i === idx ? 'w-3.5 h-2 bg-purple-600' : 'w-2 h-2 bg-gray-300 hover:bg-purple-400'}`}/>
           ))}
         </div>
       </div>
-
       {lightboxOpen && (
         <CarouselLightbox urls={urls} startIndex={idx} onClose={() => setLightboxOpen(false)}/>
       )}
@@ -188,18 +165,13 @@ function ItemImageCarousel({ urls }: { urls: string[] }) {
   );
 }
 
-// ── Lightbox used by the carousel ─────────────────────────────────────────────
-
 function CarouselLightbox({ urls, startIndex, onClose }: { urls: string[]; startIndex: number; onClose: () => void }) {
   const [idx, setIdx] = useState(startIndex);
   const prev = () => setIdx(i => (i - 1 + urls.length) % urls.length);
   const next = () => setIdx(i => (i + 1) % urls.length);
 
   return (
-    <div
-      className="fixed inset-0 bg-black/85 flex items-center justify-center z-[60] p-4 cursor-zoom-out"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 bg-black/85 flex items-center justify-center z-[60] p-4 cursor-zoom-out" onClick={onClose}>
       <div className="relative max-w-3xl w-full flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="bg-gray-900 text-white px-4 py-3 rounded-t-xl flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -229,8 +201,7 @@ function CarouselLightbox({ urls, startIndex, onClose }: { urls: string[]; start
           <div className="flex items-center gap-1.5 justify-center mt-3">
             {urls.map((_, i) => (
               <button key={i} onClick={() => setIdx(i)}
-                className={`rounded-full transition-all duration-200 ${i === idx ? 'w-4 h-2.5 bg-white' : 'w-2.5 h-2.5 bg-white/40 hover:bg-white/70'}`}
-              />
+                className={`rounded-full transition-all duration-200 ${i === idx ? 'w-4 h-2.5 bg-white' : 'w-2.5 h-2.5 bg-white/40 hover:bg-white/70'}`}/>
             ))}
           </div>
         )}
@@ -251,8 +222,6 @@ function ItemRow({
   onSetQty: (qty: number) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-
-  // Resolve all images for this item (backward compat)
   const imgs       = resolveImages(item);
   const primaryImg = imgs[0] ?? null;
 
@@ -260,8 +229,6 @@ function ItemRow({
     <div className={`border-b border-gray-100 transition ${isSelected ? 'bg-purple-50' : 'bg-white'}`}>
       {/* ── Collapsed row ── */}
       <div className="flex items-center gap-3 px-5 py-3.5">
-
-        {/* Checkbox */}
         <button
           type="button"
           onClick={onToggle}
@@ -276,7 +243,6 @@ function ItemRow({
           )}
         </button>
 
-        {/* Thumbnail — shows multi-photo badge if multiple images */}
         <div
           className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 overflow-hidden cursor-pointer relative"
           onClick={onToggle}
@@ -289,19 +255,16 @@ function ItemRow({
           )}
         </div>
 
-        {/* Name + meta */}
         <div className="flex-1 min-w-0 cursor-pointer" onClick={onToggle}>
           <p className="text-sm font-medium text-gray-800 truncate">{item.name}</p>
           <p className="text-xs text-gray-500">{item.category} • {item.inventoryNumber || 'No inv. no.'}</p>
         </div>
 
-        {/* Qty + status */}
         <div className="text-right flex-shrink-0 mr-1">
           {!item.isUnique && <p className="text-xs text-gray-500 mb-0.5">Qty: {item.quantity}</p>}
           <span className="badge-available">Available</span>
         </div>
 
-        {/* Expand toggle */}
         <button
           type="button"
           onClick={() => setExpanded(p => !p)}
@@ -318,18 +281,12 @@ function ItemRow({
       {/* ── Expanded detail panel ── */}
       {expanded && (
         <div className="px-5 pb-5 pt-1 border-t border-gray-100 space-y-4 bg-white">
-
-          {/* Multi-image carousel — only rendered when images exist */}
           {imgs.length > 0 && (
             <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                Photos ({imgs.length})
-              </p>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Photos ({imgs.length})</p>
               <ItemImageCarousel urls={imgs}/>
             </div>
           )}
-
-          {/* Detail grid */}
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Item Details</p>
             <div className="grid grid-cols-2 gap-2">
@@ -355,14 +312,10 @@ function ItemRow({
               )}
             </div>
           </div>
-
-          {/* Property Sticker */}
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Property Sticker</p>
             <PropertySticker item={item}/>
           </div>
-
-          {/* Quick-add / qty controls */}
           <div className="flex items-center gap-3 pt-1">
             {isSelected && !item.isUnique && (
               <div className="flex items-center gap-2">
@@ -393,15 +346,12 @@ function ItemRow({
 
 // ─── Main BorrowTab ───────────────────────────────────────────────────────────
 
-interface BorrowTabProps {
-  items: InventoryItem[];
-  loadingItems: boolean;
-  categories: CustomCategory[];
-}
-
-export default function BorrowTab({ items, loadingItems, categories }: BorrowTabProps) {
+export default function BorrowTab() {
   const settings = useSystemSettings();
 
+  const [items, setItems]           = useState<InventoryItem[]>([]);
+  const [loadingItems, setLoading]  = useState(true);
+  const [categories, setCategories] = useState<CustomCategory[]>([]);
   const [search, setSearch]         = useState('');
   const [cat, setCat]               = useState('All');
   const [selected, setSelected]     = useState<SelectedBorrowItem[]>([]);
@@ -415,7 +365,6 @@ export default function BorrowTab({ items, loadingItems, categories }: BorrowTab
   const [success, setSuccess]       = useState(false);
   const [error, setError]           = useState<string|null>(null);
 
-  // Pre-fill return date from settings
   const defaultReturn = useMemo(() => {
     const d = new Date();
     d.setDate(d.getDate() + settings.defaultReturnDays);
@@ -426,11 +375,20 @@ export default function BorrowTab({ items, loadingItems, categories }: BorrowTab
     setReturnDate(prev => prev || defaultReturn);
   }, [defaultReturn]);
 
+  useEffect(() => {
+    const u1 = subscribeAvailableInventory(data => { setItems(data); setLoading(false); });
+    const u2 = subscribeCategories(data => setCategories(data));
+    return () => { u1(); u2(); };
+  }, []);
+
   // Remove selected items that became unavailable in real-time
   useEffect(() => {
     const ids = new Set(items.map(i => i.id));
     setSelected(prev => prev.filter(s => ids.has(s.item.id)));
   }, [items]);
+
+  // Category names for the filter dropdown
+  const catNames = categories.map(c => c.name);
 
   const filtered = items.filter(item => {
     const q = search.toLowerCase();
@@ -508,6 +466,7 @@ export default function BorrowTab({ items, loadingItems, categories }: BorrowTab
               onChange={e => setSearch(e.target.value)}
               className="input-base"
             />
+            {/* Category filter — live from Firestore */}
             <select
               value={cat}
               onChange={e => setCat(e.target.value)}
@@ -515,7 +474,7 @@ export default function BorrowTab({ items, loadingItems, categories }: BorrowTab
               className="input-base bg-white"
             >
               <option value="All">All Categories</option>
-              {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+              {catNames.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
 
@@ -543,7 +502,6 @@ export default function BorrowTab({ items, loadingItems, categories }: BorrowTab
               <p className="text-xs font-semibold text-purple-700 mb-2">Selected ({selected.length})</p>
               {selected.map(s => (
                 <div key={s.item.id} className="flex items-center gap-2 mb-1.5">
-                  {/* Mini thumbnail in summary strip */}
                   <div className="w-6 h-6 rounded bg-gray-200 overflow-hidden flex-shrink-0">
                     {resolvePrimaryImage(s.item)
                       ? <img src={resolvePrimaryImage(s.item)!} alt={s.item.name} className="w-full h-full object-cover"/>

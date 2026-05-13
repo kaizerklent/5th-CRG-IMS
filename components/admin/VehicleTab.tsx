@@ -1,7 +1,8 @@
 'use client';
-import { useState, useMemo, useRef, useCallback, DragEvent, ChangeEvent } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, DragEvent, ChangeEvent } from 'react';
 import { useAuth } from '@/lib/firebase/AuthContext';
 import {
+  subscribeVehicles, subscribeVehicleExpenses,
   addVehicle, updateVehicle, deleteVehicle,
   addVehicleExpense, updateVehicleExpense, deleteVehicleExpense,
 } from '@/lib/firebase/firestore';
@@ -11,7 +12,6 @@ import { uploadToCloudinary } from '@/lib/cloudinary';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const VEHICLE_TYPES = ['Van', 'Sedan', 'SUV', 'Truck', 'Motorcycle', 'Other'];
-
 const PER_PAGE = 8;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -29,6 +29,12 @@ function fmtShort(n: number) {
 function monthKey(dateStr: string) {
   const d = new Date(dateStr + 'T00:00:00');
   return d.toLocaleString('en-PH', { month: 'long', year: 'numeric' });
+}
+
+/** Capitalize only the first letter of the string, leave the rest as-is. */
+function capitalizeFirst(val: string): string {
+  if (!val) return val;
+  return val.charAt(0).toUpperCase() + val.slice(1);
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -93,49 +99,32 @@ function MultiReceiptUploader({ urls, onAdd, onRemove }: MultiReceiptUploaderPro
         <span className="text-xs text-gray-400 font-normal ml-1">(optional — multiple allowed)</span>
       </label>
 
-      {/* Existing receipts grid */}
       {urls.length > 0 && (
         <div className="grid grid-cols-3 gap-2 mb-3">
           {urls.map((url, i) => (
             <div key={i} className="relative group rounded-xl overflow-hidden bg-gray-100 aspect-square">
-              <img
-                src={url}
-                alt={`Receipt ${i + 1}`}
-                className="w-full h-full object-cover cursor-pointer"
-                onClick={() => setLightbox(url)}
-              />
+              <img src={url} alt={`Receipt ${i + 1}`} className="w-full h-full object-cover cursor-pointer" onClick={() => setLightbox(url)}/>
               <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100">
-                <button
-                  type="button"
-                  onClick={() => setLightbox(url)}
-                  className="p-1.5 bg-white rounded-lg text-xs font-semibold text-gray-800 hover:bg-gray-100 transition"
-                  title="View"
-                >
+                <button type="button" onClick={() => setLightbox(url)}
+                  className="p-1.5 bg-white rounded-lg text-xs font-semibold text-gray-800 hover:bg-gray-100 transition" title="View">
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
                   </svg>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => onRemove(i)}
-                  className="p-1.5 bg-red-600 rounded-lg text-xs font-semibold text-white hover:bg-red-700 transition"
-                  title="Remove"
-                >
+                <button type="button" onClick={() => onRemove(i)}
+                  className="p-1.5 bg-red-600 rounded-lg text-xs font-semibold text-white hover:bg-red-700 transition" title="Remove">
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
                   </svg>
                 </button>
               </div>
-              <div className="absolute bottom-1 left-1 bg-black/50 text-white text-xs px-1.5 py-0.5 rounded-md">
-                #{i + 1}
-              </div>
+              <div className="absolute bottom-1 left-1 bg-black/50 text-white text-xs px-1.5 py-0.5 rounded-md">#{i + 1}</div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Drop zone */}
       <div
         onDrop={onDrop}
         onDragOver={e => { e.preventDefault(); setDragOver(true); }}
@@ -146,16 +135,13 @@ function MultiReceiptUploader({ urls, onAdd, onRemove }: MultiReceiptUploaderPro
         tabIndex={0}
         onKeyDown={e => e.key === 'Enter' && fileInputRef.current?.click()}
         className={`relative border-2 border-dashed rounded-xl transition cursor-pointer p-4
-          ${dragOver
-            ? 'border-purple-500 bg-purple-50'
-            : uploading
-              ? 'border-gray-300 bg-gray-50 cursor-not-allowed'
-              : 'border-gray-300 bg-gray-50 hover:border-purple-400 hover:bg-purple-50/50'
-          }`}
+          ${dragOver ? 'border-purple-500 bg-purple-50'
+            : uploading ? 'border-gray-300 bg-gray-50 cursor-not-allowed'
+            : 'border-gray-300 bg-gray-50 hover:border-purple-400 hover:bg-purple-50/50'}`}
       >
         {uploading ? (
           <div className="flex flex-col items-center gap-2">
-            <Spinner />
+            <Spinner/>
             <div className="w-full max-w-[160px]">
               <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
                 <div className="h-full bg-purple-600 rounded-full transition-all duration-200" style={{ width: `${progress}%` }}/>
@@ -180,15 +166,8 @@ function MultiReceiptUploader({ urls, onAdd, onRemove }: MultiReceiptUploaderPro
         )}
       </div>
 
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp,image/gif"
-        multiple
-        className="hidden"
-        onChange={onInputChange}
-        disabled={uploading}
-      />
+      <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif"
+        multiple className="hidden" onChange={onInputChange} disabled={uploading}/>
 
       {error && (
         <div className="mt-2 flex items-center gap-1.5 text-xs text-red-600">
@@ -199,18 +178,12 @@ function MultiReceiptUploader({ urls, onAdd, onRemove }: MultiReceiptUploaderPro
         </div>
       )}
 
-      {/* Lightbox */}
       {lightbox && (
-        <div
-          className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4 cursor-zoom-out"
-          onClick={() => setLightbox(null)}
-        >
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4 cursor-zoom-out" onClick={() => setLightbox(null)}>
           <div className="relative max-w-2xl w-full" onClick={e => e.stopPropagation()}>
             <img src={lightbox} alt="Receipt" className="w-full max-h-[80vh] object-contain rounded-xl shadow-2xl"/>
-            <button
-              onClick={() => setLightbox(null)}
-              className="absolute top-3 right-3 w-8 h-8 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center transition"
-            >
+            <button onClick={() => setLightbox(null)}
+              className="absolute top-3 right-3 w-8 h-8 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center transition">
               <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
               </svg>
@@ -223,21 +196,18 @@ function MultiReceiptUploader({ urls, onAdd, onRemove }: MultiReceiptUploaderPro
 }
 
 // ── Mini bar chart for expense breakdown ──────────────────────────────────────
+
 function BreakdownBar({ expenses }: { expenses: VehicleExpense[] }) {
   const total = expenses.reduce((s, e) => s + e.cost, 0);
   if (total === 0) return <p className="text-sm text-gray-400 text-center py-4">No expenses yet.</p>;
 
-  // Group by expenseType dynamically
   const typeMap: Record<string, number> = {};
-  expenses.forEach(e => {
-    typeMap[e.expenseType] = (typeMap[e.expenseType] || 0) + e.cost;
-  });
+  expenses.forEach(e => { typeMap[e.expenseType] = (typeMap[e.expenseType] || 0) + e.cost; });
 
   const byType = Object.entries(typeMap)
     .map(([type, amount]) => ({ type, amount }))
     .sort((a, b) => b.amount - a.amount);
 
-  // Simple hue-based colors cycling
   const PALETTE = [
     'bg-purple-500', 'bg-blue-500', 'bg-amber-500',
     'bg-green-500', 'bg-red-500', 'bg-teal-500',
@@ -265,14 +235,12 @@ function BreakdownBar({ expenses }: { expenses: VehicleExpense[] }) {
   );
 }
 
-// ── Monthly trend (simple bar chart) ─────────────────────────────────────────
+// ── Monthly trend ─────────────────────────────────────────────────────────────
+
 function MonthlyTrend({ expenses }: { expenses: VehicleExpense[] }) {
   const months = useMemo(() => {
     const map: Record<string, number> = {};
-    expenses.forEach(e => {
-      const k = e.date.slice(0, 7);
-      map[k] = (map[k] || 0) + e.cost;
-    });
+    expenses.forEach(e => { const k = e.date.slice(0, 7); map[k] = (map[k] || 0) + e.cost; });
     return Object.entries(map)
       .sort(([a], [b]) => a.localeCompare(b))
       .slice(-6)
@@ -291,10 +259,8 @@ function MonthlyTrend({ expenses }: { expenses: VehicleExpense[] }) {
         <div key={m.label} className="flex-1 flex flex-col items-center gap-1">
           <span className="text-xs text-gray-500 whitespace-nowrap">{fmtShort(m.value)}</span>
           <div className="w-full bg-gray-100 rounded-t-md overflow-hidden" style={{ height: 72 }}>
-            <div
-              className="w-full bg-purple-500 rounded-t-md transition-all duration-500"
-              style={{ height: `${max > 0 ? (m.value / max) * 100 : 0}%`, marginTop: 'auto' }}
-            />
+            <div className="w-full bg-purple-500 rounded-t-md transition-all duration-500"
+              style={{ height: `${max > 0 ? (m.value / max) * 100 : 0}%`, marginTop: 'auto' }}/>
           </div>
           <span className="text-xs text-gray-400">{m.label}</span>
         </div>
@@ -304,25 +270,17 @@ function MonthlyTrend({ expenses }: { expenses: VehicleExpense[] }) {
 }
 
 // ─── Vehicle Card ─────────────────────────────────────────────────────────────
-function VehicleCard({
-  vehicle, expenses, selected, onSelect, onEdit, onDelete,
-}: {
-  vehicle: Vehicle;
-  expenses: VehicleExpense[];
-  selected: boolean;
-  onSelect: () => void;
-  onEdit: () => void;
-  onDelete: () => void;
+
+function VehicleCard({ vehicle, expenses, selected, onSelect, onEdit, onDelete }: {
+  vehicle: Vehicle; expenses: VehicleExpense[];
+  selected: boolean; onSelect: () => void; onEdit: () => void; onDelete: () => void;
 }) {
   const total = expenses.reduce((s, e) => s + e.cost, 0);
   const lastExp = expenses[0];
 
   return (
-    <div
-      onClick={onSelect}
-      className={`card p-5 cursor-pointer transition-all hover:shadow-md
-        ${selected ? 'ring-2 ring-purple-500 border-purple-200' : 'hover:border-gray-300'}`}
-    >
+    <div onClick={onSelect}
+      className={`card p-5 cursor-pointer transition-all hover:shadow-md ${selected ? 'ring-2 ring-purple-500 border-purple-200' : 'hover:border-gray-300'}`}>
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3">
           <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${selected ? 'bg-purple-700' : 'bg-gray-100'}`}>
@@ -350,7 +308,6 @@ function VehicleCard({
           </button>
         </div>
       </div>
-
       <div className="grid grid-cols-2 gap-2 text-xs mb-3">
         <div className="bg-gray-50 rounded-lg px-2.5 py-2">
           <p className="text-gray-400 mb-0.5">Type / Year</p>
@@ -361,7 +318,6 @@ function VehicleCard({
           <p className="font-medium text-gray-700 truncate">{vehicle.assignedDriver || '—'}</p>
         </div>
       </div>
-
       <div className="flex items-center justify-between pt-3 border-t border-gray-100">
         <div>
           <p className="text-xs text-gray-400">Total Expenses</p>
@@ -377,18 +333,14 @@ function VehicleCard({
 }
 
 // ─── Vehicle Form Modal ───────────────────────────────────────────────────────
+
 type VehicleFormData = Omit<Vehicle, 'id' | 'createdAt'>;
 const EMPTY_VEHICLE: VehicleFormData = { name: '', plateNumber: '', type: 'Van', year: '', assignedDriver: '', notes: '' };
 
-function VehicleModal({
-  mode, initial, onSave, onClose, saving, error,
-}: {
-  mode: 'add' | 'edit';
-  initial: VehicleFormData;
-  onSave: (d: VehicleFormData) => void;
-  onClose: () => void;
-  saving: boolean;
-  error: string | null;
+function VehicleModal({ mode, initial, onSave, onClose, saving, error }: {
+  mode: 'add' | 'edit'; initial: VehicleFormData;
+  onSave: (d: VehicleFormData) => void; onClose: () => void;
+  saving: boolean; error: string | null;
 }) {
   const [form, setForm] = useState<VehicleFormData>(initial);
   const upd = (k: keyof VehicleFormData, v: string) => setForm(p => ({ ...p, [k]: v }));
@@ -437,11 +389,7 @@ function VehicleModal({
         </div>
         <div className="px-6 py-4 border-t border-gray-100 flex gap-3">
           <button onClick={onClose} disabled={saving} className="btn-secondary flex-1">Cancel</button>
-          <button
-            onClick={() => onSave(form)}
-            disabled={saving || !form.name.trim() || !form.plateNumber.trim()}
-            className="btn-primary flex-1 py-2.5"
-          >
+          <button onClick={() => onSave(form)} disabled={saving || !form.name.trim() || !form.plateNumber.trim()} className="btn-primary flex-1 py-2.5">
             {saving ? <><Spinner sm/> Saving...</> : mode === 'add' ? 'Add Vehicle' : 'Save Changes'}
           </button>
         </div>
@@ -451,32 +399,25 @@ function VehicleModal({
 }
 
 // ─── Expense Form Modal ───────────────────────────────────────────────────────
-// NOTE: receiptPhotoUrls is now string[] (multiple receipts), odometer removed
 
 type ExpenseFormData = {
-  vehicleId: string;
-  vehicleName: string;
-  date: string;
-  expenseType: string;       // free-text input now
-  cost: number;
-  vendor: string;
-  notes: string;
-  receiptPhotoUrls: string[]; // was single receiptPhotoUrl
+  vehicleId: string; vehicleName: string; date: string;
+  expenseType: string; cost: number; vendor: string;
+  notes: string; receiptPhotoUrls: string[];
 };
 
-function ExpenseModal({
-  mode, initial, vehicles, onSave, onClose, saving, error,
-}: {
-  mode: 'add' | 'edit';
-  initial: ExpenseFormData;
-  vehicles: Vehicle[];
-  onSave: (d: ExpenseFormData) => void;
-  onClose: () => void;
-  saving: boolean;
-  error: string | null;
+function ExpenseModal({ mode, initial, vehicles, onSave, onClose, saving, error }: {
+  mode: 'add' | 'edit'; initial: ExpenseFormData; vehicles: Vehicle[];
+  onSave: (d: ExpenseFormData) => void; onClose: () => void;
+  saving: boolean; error: string | null;
 }) {
   const [form, setForm] = useState<ExpenseFormData>(initial);
   const upd = (k: keyof ExpenseFormData, v: any) => setForm(p => ({ ...p, [k]: v }));
+
+  // ── Auto-capitalize first letter of expense type ──────────────────────────
+  function handleExpenseTypeChange(val: string) {
+    upd('expenseType', capitalizeFirst(val));
+  }
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" role="dialog" aria-modal="true">
@@ -496,15 +437,13 @@ function ExpenseModal({
           {/* Vehicle */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Vehicle <span className="text-red-500">*</span></label>
-            <select
-              value={form.vehicleId}
+            <select value={form.vehicleId}
               onChange={e => {
                 const v = vehicles.find(x => x.id === e.target.value);
                 upd('vehicleId', e.target.value);
                 if (v) upd('vehicleName', v.name);
               }}
-              className="input-base bg-white"
-            >
+              className="input-base bg-white">
               <option value="">Select vehicle</option>
               {vehicles.map(v => <option key={v.id} value={v.id}>{v.name} — {v.plateNumber}</option>)}
             </select>
@@ -517,45 +456,42 @@ function ExpenseModal({
               <input type="date" value={form.date} onChange={e => upd('date', e.target.value)} className="input-base"/>
             </div>
 
-            {/* Expense Type — now a free-text input */}
+            {/* Expense Type — free text with auto-capitalize first letter */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Expense Type <span className="text-red-500">*</span></label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Expense Type <span className="text-red-500">*</span>
+              </label>
               <input
                 type="text"
                 value={form.expenseType}
-                onChange={e => upd('expenseType', e.target.value)}
-                placeholder="e.g. Oil Change, Fuel, Repair..."
+                onChange={e => handleExpenseTypeChange(e.target.value)}
+                placeholder="e.g. Oil change, Fuel, Repair..."
                 className="input-base"
               />
+              <p className="text-xs text-gray-400 mt-1">First letter is auto-capitalized.</p>
             </div>
 
             {/* Cost */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Cost (₱) <span className="text-red-500">*</span></label>
-              <input
-                type="number" min={0} step={0.01} value={form.cost || ''}
+              <input type="number" min={0} step={0.01} value={form.cost || ''}
                 onChange={e => upd('cost', parseFloat(e.target.value) || 0)}
-                placeholder="0.00" className="input-base"
-              />
+                placeholder="0.00" className="input-base"/>
             </div>
 
             {/* Vendor */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Vendor / Shop</label>
-              <input
-                type="text" value={form.vendor} onChange={e => upd('vendor', e.target.value)}
-                placeholder="e.g. Toyota Service Center" className="input-base"
-              />
+              <input type="text" value={form.vendor} onChange={e => upd('vendor', e.target.value)}
+                placeholder="e.g. Toyota Service Center" className="input-base"/>
             </div>
           </div>
 
           {/* Notes */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-            <textarea
-              value={form.notes} onChange={e => upd('notes', e.target.value)} rows={2}
-              placeholder="Details about this expense..." className="input-base resize-none"
-            />
+            <textarea value={form.notes} onChange={e => upd('notes', e.target.value)} rows={2}
+              placeholder="Details about this expense..." className="input-base resize-none"/>
           </div>
 
           {/* Multi-receipt uploader */}
@@ -568,11 +504,9 @@ function ExpenseModal({
 
         <div className="px-6 py-4 border-t border-gray-100 flex gap-3 flex-shrink-0">
           <button onClick={onClose} disabled={saving} className="btn-secondary flex-1">Cancel</button>
-          <button
-            onClick={() => onSave(form)}
+          <button onClick={() => onSave(form)}
             disabled={saving || !form.vehicleId || !form.date || !form.expenseType.trim() || form.cost <= 0}
-            className="btn-primary flex-1 py-2.5"
-          >
+            className="btn-primary flex-1 py-2.5">
             {saving ? <><Spinner sm/> Saving...</> : mode === 'add' ? 'Log Expense' : 'Save Changes'}
           </button>
         </div>
@@ -585,15 +519,14 @@ function ExpenseModal({
 
 type SubView = 'overview' | 'expenses' | 'reports';
 
-interface VehicleTabProps {
-  vehicles: Vehicle[];
-  expenses: VehicleExpense[];
-  loading: boolean;
-}
-
-export default function VehicleTab({ vehicles, expenses, loading }: VehicleTabProps) {
+export default function VehicleTab() {
   const { user } = useAuth();
   const adminName = user?.displayName || user?.email || 'Admin';
+
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [expenses, setExpenses] = useState<VehicleExpense[]>([]);
+  const [loadingV, setLoadingV] = useState(true);
+  const [loadingE, setLoadingE] = useState(true);
 
   const [subView, setSubView]         = useState<SubView>('overview');
   const [selectedVId, setSelectedVId] = useState<string | null>(null);
@@ -621,10 +554,20 @@ export default function VehicleTab({ vehicles, expenses, loading }: VehicleTabPr
   const [deleting, setDeleting]     = useState(false);
   const [delErr, setDelErr]         = useState<string | null>(null);
 
-  // Receipt lightbox for the expense table
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
+
+  useEffect(() => {
+    const unsub = subscribeVehicles(v => { setVehicles(v); setLoadingV(false); });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    setLoadingE(true);
+    const unsub = subscribeVehicleExpenses(null, e => { setExpenses(e); setLoadingE(false); });
+    return unsub;
+  }, []);
 
   const selectedVehicle = vehicles.find(v => v.id === selectedVId) ?? null;
   const expensesForVehicle = (vid: string) => expenses.filter(e => e.vehicleId === vid);
@@ -652,10 +595,7 @@ export default function VehicleTab({ vehicles, expenses, loading }: VehicleTabPr
 
   const monthlyTotals = useMemo(() => {
     const map: Record<string, number> = {};
-    reportExpenses.forEach(e => {
-      const k = monthKey(e.date);
-      map[k] = (map[k] || 0) + e.cost;
-    });
+    reportExpenses.forEach(e => { const k = monthKey(e.date); map[k] = (map[k] || 0) + e.cost; });
     return Object.entries(map).sort(([a], [b]) => b.localeCompare(a)).slice(0, 6);
   }, [reportExpenses]);
 
@@ -696,28 +636,16 @@ export default function VehicleTab({ vehicles, expenses, loading }: VehicleTabPr
   function openAddExpense() {
     const preselect = selectedVehicle ?? vehicles[0] ?? null;
     setEForm({
-      vehicleId: preselect?.id ?? '',
-      vehicleName: preselect?.name ?? '',
-      date: today,
-      expenseType: '',
-      cost: 0,
-      vendor: '',
-      notes: '',
-      receiptPhotoUrls: [],
+      vehicleId: preselect?.id ?? '', vehicleName: preselect?.name ?? '',
+      date: today, expenseType: '', cost: 0, vendor: '', notes: '', receiptPhotoUrls: [],
     });
     setEditExpenseId(null); setErrE(null); setEModal('add');
   }
 
   function openEditExpense(e: VehicleExpense) {
     setEForm({
-      vehicleId: e.vehicleId,
-      vehicleName: e.vehicleName,
-      date: e.date,
-      expenseType: e.expenseType,
-      cost: e.cost,
-      vendor: e.vendor,
-      notes: e.notes,
-      // Support old single-url field and new array field
+      vehicleId: e.vehicleId, vehicleName: e.vehicleName, date: e.date,
+      expenseType: e.expenseType, cost: e.cost, vendor: e.vendor, notes: e.notes,
       receiptPhotoUrls: (e as any).receiptPhotoUrls ?? (e.receiptPhotoUrl ? [e.receiptPhotoUrl] : []),
     });
     setEditExpenseId(e.id); setErrE(null); setEModal('edit');
@@ -726,17 +654,11 @@ export default function VehicleTab({ vehicles, expenses, loading }: VehicleTabPr
   async function handleSaveExpense(form: ExpenseFormData) {
     setSavingE(true); setErrE(null);
     try {
-      // Build the payload — store as receiptPhotoUrls array; keep receiptPhotoUrl as first for backward compat
       const payload = {
-        vehicleId: form.vehicleId,
-        vehicleName: form.vehicleName,
-        date: form.date,
-        expenseType: form.expenseType,
-        cost: form.cost,
-        odometer: '',           // kept as empty for backward compat with Firestore type
-        vendor: form.vendor,
-        notes: form.notes,
-        receiptPhotoUrl: form.receiptPhotoUrls[0] ?? null,  // backward compat
+        vehicleId: form.vehicleId, vehicleName: form.vehicleName,
+        date: form.date, expenseType: form.expenseType, cost: form.cost,
+        odometer: '', vendor: form.vendor, notes: form.notes,
+        receiptPhotoUrl: form.receiptPhotoUrls[0] ?? null,
         receiptPhotoUrls: form.receiptPhotoUrls,
       };
       if (eModal === 'add') await addVehicleExpense(payload as any, adminName);
@@ -776,8 +698,10 @@ export default function VehicleTab({ vehicles, expenses, loading }: VehicleTabPr
 
   // ─── Render ─────────────────────────────────────────────────────────────────
 
+  const loading = loadingV || loadingE;
+
   return (
-    <div className=" space-y-4">
+    <div className="space-y-4">
 
       {/* ── Sub-nav ── */}
       <div className="flex items-center justify-between">
@@ -838,7 +762,6 @@ export default function VehicleTab({ vehicles, expenses, loading }: VehicleTabPr
             </div>
           ) : (
             <>
-              {/* Summary strip */}
               <div className="grid grid-cols-3 gap-4">
                 {[
                   { label: 'Total Vehicles', value: vehicles.length, color: 'text-purple-700 bg-purple-50 border-purple-200' },
@@ -852,12 +775,9 @@ export default function VehicleTab({ vehicles, expenses, loading }: VehicleTabPr
                 ))}
               </div>
 
-              {/* Vehicle cards */}
               <div className="grid grid-cols-2 gap-4">
                 {vehicles.map(v => (
-                  <VehicleCard
-                    key={v.id} vehicle={v}
-                    expenses={expensesForVehicle(v.id)}
+                  <VehicleCard key={v.id} vehicle={v} expenses={expensesForVehicle(v.id)}
                     selected={selectedVId === v.id}
                     onSelect={() => { setSelectedVId(p => p === v.id ? null : v.id); setSubView('expenses'); }}
                     onEdit={() => openEditVehicle(v)}
@@ -866,7 +786,6 @@ export default function VehicleTab({ vehicles, expenses, loading }: VehicleTabPr
                 ))}
               </div>
 
-              {/* Recent expenses */}
               {expenses.length > 0 && (
                 <div className="card overflow-hidden">
                   <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
@@ -888,9 +807,7 @@ export default function VehicleTab({ vehicles, expenses, loading }: VehicleTabPr
                             <td className="px-5 py-3.5 text-gray-600 whitespace-nowrap">{e.date}</td>
                             <td className="px-5 py-3.5 font-medium text-gray-800">{e.vehicleName}</td>
                             <td className="px-5 py-3.5">
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                                {e.expenseType}
-                              </span>
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">{e.expenseType}</span>
                             </td>
                             <td className="px-5 py-3.5 font-semibold text-gray-800">{fmt(e.cost)}</td>
                             <td className="px-5 py-3.5 text-gray-600">{e.vendor || '—'}</td>
@@ -909,19 +826,16 @@ export default function VehicleTab({ vehicles, expenses, loading }: VehicleTabPr
       {/* ════ EXPENSES LOG ════ */}
       {subView === 'expenses' && (
         <div className="space-y-4">
-          {/* Filters */}
           <div className="card px-5 py-4">
             <div className="flex flex-wrap gap-3 items-end">
               <div className="flex-1 min-w-[160px]">
                 <label className="block text-xs font-medium text-gray-600 mb-1">Search</label>
                 <input type="text" placeholder="Vehicle, vendor, type, notes..."
-                  value={searchQ} onChange={e => { setSearchQ(e.target.value); setPage(1); }}
-                  className="input-base"/>
+                  value={searchQ} onChange={e => { setSearchQ(e.target.value); setPage(1); }} className="input-base"/>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Vehicle</label>
-                <select value={selectedVId || ''} onChange={e => { setSelectedVId(e.target.value || null); setPage(1); }}
-                  className="input-base bg-white w-auto">
+                <select value={selectedVId || ''} onChange={e => { setSelectedVId(e.target.value || null); setPage(1); }} className="input-base bg-white w-auto">
                   <option value="">All Vehicles</option>
                   {vehicles.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
                 </select>
@@ -929,8 +843,7 @@ export default function VehicleTab({ vehicles, expenses, loading }: VehicleTabPr
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Expense Type</label>
                 <input type="text" placeholder="Filter by type..." value={filterType}
-                  onChange={e => { setFilterType(e.target.value); setPage(1); }}
-                  className="input-base w-40"/>
+                  onChange={e => { setFilterType(e.target.value); setPage(1); }} className="input-base w-40"/>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">From</label>
@@ -947,7 +860,6 @@ export default function VehicleTab({ vehicles, expenses, loading }: VehicleTabPr
             </div>
           </div>
 
-          {/* Table */}
           <div className="card overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-gray-800">
@@ -977,19 +889,15 @@ export default function VehicleTab({ vehicles, expenses, loading }: VehicleTabPr
                   ) : paginated.length === 0 ? (
                     <tr><td colSpan={8} className="text-center text-gray-500 py-12 text-sm">No expenses found.</td></tr>
                   ) : paginated.map(e => {
-                    // Support both old single url and new array
                     const receiptUrls: string[] = (e as any).receiptPhotoUrls?.length
                       ? (e as any).receiptPhotoUrls
                       : e.receiptPhotoUrl ? [e.receiptPhotoUrl] : [];
-
                     return (
                       <tr key={e.id} className="border-b border-gray-50 hover:bg-gray-50 transition">
                         <td className="px-5 py-4 text-gray-600 whitespace-nowrap">{e.date}</td>
                         <td className="px-5 py-4 font-medium text-gray-800">{e.vehicleName}</td>
                         <td className="px-5 py-4">
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700 whitespace-nowrap">
-                            {e.expenseType}
-                          </span>
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700 whitespace-nowrap">{e.expenseType}</span>
                         </td>
                         <td className="px-5 py-4 font-semibold text-gray-800 whitespace-nowrap">{fmt(e.cost)}</td>
                         <td className="px-5 py-4 text-gray-600">{e.vendor || '—'}</td>
@@ -1002,13 +910,9 @@ export default function VehicleTab({ vehicles, expenses, loading }: VehicleTabPr
                           ) : (
                             <div className="flex items-center gap-1">
                               {receiptUrls.slice(0, 3).map((url, idx) => (
-                                <img
-                                  key={idx}
-                                  src={url}
-                                  alt={`Receipt ${idx + 1}`}
+                                <img key={idx} src={url} alt={`Receipt ${idx + 1}`}
                                   onClick={() => setLightboxUrl(url)}
-                                  className="w-9 h-9 object-cover rounded-lg cursor-pointer hover:opacity-80 transition ring-1 ring-gray-200"
-                                />
+                                  className="w-9 h-9 object-cover rounded-lg cursor-pointer hover:opacity-80 transition ring-1 ring-gray-200"/>
                               ))}
                               {receiptUrls.length > 3 && (
                                 <span className="w-9 h-9 rounded-lg bg-gray-100 flex items-center justify-center text-xs font-medium text-gray-500 ring-1 ring-gray-200">
@@ -1167,20 +1071,16 @@ export default function VehicleTab({ vehicles, expenses, loading }: VehicleTabPr
 
       {/* ── Vehicle Modal ── */}
       {vModal && (
-        <VehicleModal
-          mode={vModal} initial={vForm}
+        <VehicleModal mode={vModal} initial={vForm}
           onSave={handleSaveVehicle} onClose={() => setVModal(null)}
-          saving={savingV} error={errV}
-        />
+          saving={savingV} error={errV}/>
       )}
 
       {/* ── Expense Modal ── */}
       {eModal && eForm && (
-        <ExpenseModal
-          mode={eModal} initial={eForm} vehicles={vehicles}
+        <ExpenseModal mode={eModal} initial={eForm} vehicles={vehicles}
           onSave={handleSaveExpense} onClose={() => setEModal(null)}
-          saving={savingE} error={errE}
-        />
+          saving={savingE} error={errE}/>
       )}
 
       {/* ── Delete Vehicle Confirm ── */}
@@ -1231,16 +1131,11 @@ export default function VehicleTab({ vehicles, expenses, loading }: VehicleTabPr
 
       {/* ── Receipt Lightbox ── */}
       {lightboxUrl && (
-        <div
-          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 cursor-zoom-out"
-          onClick={() => setLightboxUrl(null)}
-        >
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 cursor-zoom-out" onClick={() => setLightboxUrl(null)}>
           <div className="relative max-w-2xl w-full" onClick={e => e.stopPropagation()}>
             <img src={lightboxUrl} alt="Receipt" className="w-full max-h-[80vh] object-contain rounded-xl shadow-2xl"/>
-            <button
-              onClick={() => setLightboxUrl(null)}
-              className="absolute top-3 right-3 w-8 h-8 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center transition"
-            >
+            <button onClick={() => setLightboxUrl(null)}
+              className="absolute top-3 right-3 w-8 h-8 bg-black/50 hover:bg-black/70 rounded-full flex items-center justify-center transition">
               <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
               </svg>

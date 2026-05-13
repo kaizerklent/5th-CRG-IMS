@@ -6,7 +6,7 @@ import {
 import {
   subscribeInventory, subscribeActiveBorrows, subscribeAllBorrows,
   subscribeVehicles, subscribeVehicleExpenses,
-  subscribeCategories, seedDefaultCategories,
+  subscribeCategories,
 } from '@/lib/firebase/firestore';
 import Sidebar from '@/components/admin/Sidebar';
 import TopBar  from '@/components/admin/TopBar';
@@ -58,7 +58,6 @@ export default function AdminPage() {
     const u5 = subscribeVehicleExpenses(null, data => setVehicleExpenses(data));
     const u6 = subscribeCategories(data => {
       setCategories(data);
-      if (data.length === 0) seedDefaultCategories();
     });
 
     return () => { u1(); u2(); u3(); u4(); u5(); u6(); };

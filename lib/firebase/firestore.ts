@@ -66,7 +66,6 @@ export function subscribeAllBorrows(cb: (reqs: BorrowRequest[]) => void): Unsubs
 
 export function subscribeVehicles(cb: (vehicles: Vehicle[]) => void): Unsubscribe {
   return onSnapshot(
-    // Phase C1: changed from 'asc' → 'desc' so newest vehicles appear first
     query(collection(db, 'vehicles'), orderBy('createdAt', 'desc')),
     s => cb(s.docs.map(d => ({ id: d.id, ...d.data() } as Vehicle)))
   );
@@ -88,9 +87,7 @@ export function subscribeVehicleExpenses(
   );
 }
 
-// ─── Custom Categories (Feature B) ────────────────────────────────────────────
-
-const DEFAULT_CATEGORIES = ['Camera', 'Accessories', 'Cable', 'Projector', 'Lighting', 'Laptop', 'Audio', 'Other'];
+// ─── Category subscriptions & writes ─────────────────────────────────────────
 
 export function subscribeCategories(cb: (cats: CustomCategory[]) => void): Unsubscribe {
   return onSnapshot(
@@ -99,60 +96,35 @@ export function subscribeCategories(cb: (cats: CustomCategory[]) => void): Unsub
   );
 }
 
-function normalizeCategoryName(name: string): string {
-  return name.trim();
-}
-
 export async function addCategory(name: string, adminName: string): Promise<string> {
-  const normalized = normalizeCategoryName(name);
-  if (!normalized) throw new Error('Category name is required.');
-
-  // Check for duplicates (case-insensitive) by reading current docs
-  const snap = await getDocs(collection(db, 'categories'));
-  const exists = snap.docs.some(d => {
-    const data = d.data() as CustomCategory;
-    return data.name.toLowerCase() === normalized.toLowerCase();
-  });
-  if (exists) throw new Error(`Category "${normalized}" already exists.`);
-
+  const trimmed = name.trim();
   const ref = await addDoc(collection(db, 'categories'), {
-    name: normalized,
+    name: trimmed,
     createdAt: serverTimestamp(),
   });
-
   await logHistory({
     action: 'add',
     itemId: ref.id,
-    itemName: normalized,
+    itemName: trimmed,
     adminName,
-    details: `Added category: ${normalized}`,
+    details: `Added inventory category: "${trimmed}"`,
   });
-
   return ref.id;
 }
 
-export async function deleteCategory(id: string, name: string, adminName: string): Promise<void> {
+export async function deleteCategory(
+  id: string,
+  name: string,
+  adminName: string
+): Promise<void> {
   await deleteDoc(doc(db, 'categories', id));
-
   await logHistory({
     action: 'delete',
     itemId: id,
     itemName: name,
     adminName,
-    details: `Deleted category: ${name}`,
+    details: `Deleted inventory category: "${name}"`,
   });
-}
-
-export async function seedDefaultCategories(): Promise<void> {
-  const snap = await getDocs(collection(db, 'categories'));
-  if (!snap.empty) return; // idempotent — only seed when empty
-
-  const batch = writeBatch(db);
-  for (const name of DEFAULT_CATEGORIES) {
-    const ref = doc(collection(db, 'categories'));
-    batch.set(ref, { name, createdAt: serverTimestamp() });
-  }
-  await batch.commit();
 }
 
 // ─── Admin history ────────────────────────────────────────────────────────────
@@ -163,17 +135,12 @@ async function logHistory(entry: Omit<AdminHistory, 'id' | 'timestamp'>): Promis
 
 // ─── Inventory writes ─────────────────────────────────────────────────────────
 
-// Phase A1: addInventoryItem now writes imageUrls[] as the primary field.
-// imageUrl is kept as the first element of imageUrls for backward compat reads
-// on any code that still accesses imageUrl directly.
-
 export async function addInventoryItem(
   data: Omit<InventoryItem, 'id' | 'createdAt'>,
   adminName: string
 ): Promise<string> {
-  // Normalise: derive imageUrls from whatever was passed in
   const imageUrls = normaliseImageUrls(data.imageUrls, data.imageUrl);
-  const imageUrl  = imageUrls[0] ?? null; // keep single-field in sync
+  const imageUrl  = imageUrls[0] ?? null;
 
   const ref = await addDoc(collection(db, 'inventory'), {
     ...data,
@@ -194,7 +161,6 @@ export async function updateInventoryItem(
   data: Partial<Omit<InventoryItem, 'id' | 'createdAt'>>,
   adminName: string
 ): Promise<void> {
-  // Normalise images before writing
   const imageUrls = normaliseImageUrls(data.imageUrls, data.imageUrl ?? null);
   const imageUrl  = imageUrls[0] ?? null;
 
@@ -216,16 +182,11 @@ export async function deleteInventoryItem(
 
 // ─── Image normalisation helper ───────────────────────────────────────────────
 
-/**
- * Merges imageUrls array and legacy imageUrl into a single clean string[].
- * Ensures no duplicates and no empty strings.
- */
 function normaliseImageUrls(
   imageUrls: string[] | undefined,
   imageUrl: string | null
 ): string[] {
   const base = Array.isArray(imageUrls) ? imageUrls : [];
-  // If no imageUrls but has legacy imageUrl, seed array from it
   if (base.length === 0 && imageUrl) return [imageUrl];
   return base.filter(Boolean);
 }
@@ -304,28 +265,6 @@ export async function updateVehicleExpense(
   });
 }
 
-// ─── Turn In (Feature: Turned In) ────────────────────────────────────────────
-
-export async function markTurnedIn(
-  item: InventoryItem,
-  turnInNotes: string,
-  adminName: string
-): Promise<void> {
-  if (item.borrowedBy) {
-    throw new Error(`"${item.name}" is currently borrowed by ${item.borrowedBy}. It must be returned before it can be turned in.`);
-  }
-
-  await deleteDoc(doc(db, 'inventory', item.id));
-
-  await logHistory({
-    action: 'turnedIn',
-    itemId: item.id,
-    itemName: item.name,
-    adminName,
-    details: `Turned In: ${item.name}${item.inventoryNumber ? ` (${item.inventoryNumber})` : ''} — sent to central storage.${turnInNotes ? ` Notes: ${turnInNotes}` : ''}`,
-  });
-}
-
 export async function deleteVehicleExpense(
   expenseId: string, vehicleName: string, expenseType: string, adminName: string
 ): Promise<void> {
@@ -350,7 +289,6 @@ export async function submitBorrowRequest(
   notes: string
 ): Promise<string> {
 
-  // Step 1: Validate current stock against live Firestore state
   for (const s of selectedItems) {
     const snap = await getDoc(doc(db, 'inventory', s.item.id));
     if (!snap.exists()) {
@@ -368,7 +306,6 @@ export async function submitBorrowRequest(
     }
   }
 
-  // Step 2: All items confirmed available — proceed with batch write
   const batch = writeBatch(db);
   const borrowRef = doc(collection(db, 'borrowRequests'));
 
