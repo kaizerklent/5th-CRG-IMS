@@ -10,23 +10,30 @@ import {
 } from '@/lib/firebase/firestore';
 import Sidebar from '@/components/admin/Sidebar';
 import TopBar  from '@/components/admin/TopBar';
-import DashboardTab from '@/components/admin/DashboardTab';
-import BorrowTab    from '@/components/admin/BorrowTab';
-import BorrowedTab  from '@/components/admin/BorrowedTab';
-import ReturnedTab  from '@/components/admin/ReturnedTab';
-import InventoryTab from '@/components/admin/InventoryTab';
-import HistoryTab   from '@/components/admin/HistoryTab';
-import VehicleTab   from '@/components/admin/VehicleTab';
-import ProfileTab   from '@/components/admin/ProfileTab';
+import DashboardTab    from '@/components/admin/DashboardTab';
+import BorrowTab       from '@/components/admin/BorrowTab';
+import BorrowedTab     from '@/components/admin/BorrowedTab';
+import ReturnedTab     from '@/components/admin/ReturnedTab';
+import InventoryTab    from '@/components/admin/InventoryTab';
+import HistoryTab      from '@/components/admin/HistoryTab';
+import VehicleTab      from '@/components/admin/VehicleTab';
+import VendorReturnTab from '@/components/admin/VendorReturnTab'; // ← NEW
+import ProfileTab      from '@/components/admin/ProfileTab';
 
 const TAB_LABELS: Record<TabId, string> = {
-  dashboard: 'Dashboard', borrow: 'Borrow Item', borrowed: 'Borrowed Items',
-  returned: 'Returned Items', inventory: 'Inventory', history: 'History',
-  vehicle: 'Vehicles', profile: 'Profile',
+  dashboard:       'Dashboard',
+  borrow:          'Borrow Item',
+  borrowed:        'Borrowed Items',
+  returned:        'Returned Items',
+  inventory:       'Inventory',
+  history:         'History',
+  vehicle:         'Vehicles',
+  'vendor-return': 'Vendor Returns', // ← NEW
+  profile:         'Profile',
 };
 
 export default function AdminPage() {
-  const [activeTab, setActiveTab]       = useState<TabId>('dashboard');
+  const [activeTab, setActiveTab]               = useState<TabId>('dashboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // ── Shared state from Firestore subscriptions ──────────────────────────────
@@ -56,9 +63,7 @@ export default function AdminPage() {
       setLoadingVehicles(false);
     });
     const u5 = subscribeVehicleExpenses(null, data => setVehicleExpenses(data));
-    const u6 = subscribeCategories(data => {
-      setCategories(data);
-    });
+    const u6 = subscribeCategories(data => setCategories(data));
 
     return () => { u1(); u2(); u3(); u4(); u5(); u6(); };
   }, []);
@@ -111,6 +116,13 @@ export default function AdminPage() {
             vehicles={vehicles}
             expenses={vehicleExpenses}
             loading={loadingVehicles}
+          />
+        );
+      case 'vendor-return': // ← NEW
+        return (
+          <VendorReturnTab
+            items={inventoryItems}
+            loadingInventory={loadingInventory}
           />
         );
       case 'profile':

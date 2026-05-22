@@ -2,12 +2,18 @@
 import { useState, useEffect, useMemo, useRef, useCallback, DragEvent, ChangeEvent } from 'react';
 import { useAuth } from '@/lib/firebase/AuthContext';
 import {
-  subscribeVehicles, subscribeVehicleExpenses,
   addVehicle, updateVehicle, deleteVehicle,
   addVehicleExpense, updateVehicleExpense, deleteVehicleExpense,
 } from '@/lib/firebase/firestore';
 import { Vehicle, VehicleExpense } from '@/lib/types/inventory';
 import { uploadToCloudinary } from '@/lib/cloudinary';
+import { exportVehicleExpenses, exportVehicles } from '@/lib/utils/exportXLSX';
+
+interface VehicleTabProps {
+  vehicles: Vehicle[];
+  expenses: VehicleExpense[];
+  loading: boolean;
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -519,14 +525,9 @@ function ExpenseModal({ mode, initial, vehicles, onSave, onClose, saving, error 
 
 type SubView = 'overview' | 'expenses' | 'reports';
 
-export default function VehicleTab() {
+export default function VehicleTab({ vehicles, expenses, loading }: VehicleTabProps) {
   const { user } = useAuth();
   const adminName = user?.displayName || user?.email || 'Admin';
-
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [expenses, setExpenses] = useState<VehicleExpense[]>([]);
-  const [loadingV, setLoadingV] = useState(true);
-  const [loadingE, setLoadingE] = useState(true);
 
   const [subView, setSubView]         = useState<SubView>('overview');
   const [selectedVId, setSelectedVId] = useState<string | null>(null);
@@ -557,17 +558,6 @@ export default function VehicleTab() {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
-
-  useEffect(() => {
-    const unsub = subscribeVehicles(v => { setVehicles(v); setLoadingV(false); });
-    return unsub;
-  }, []);
-
-  useEffect(() => {
-    setLoadingE(true);
-    const unsub = subscribeVehicleExpenses(null, e => { setExpenses(e); setLoadingE(false); });
-    return unsub;
-  }, []);
 
   const selectedVehicle = vehicles.find(v => v.id === selectedVId) ?? null;
   const expensesForVehicle = (vid: string) => expenses.filter(e => e.vehicleId === vid);
@@ -678,27 +668,15 @@ export default function VehicleTab() {
     finally { setDeleting(false); }
   }
 
-  // ── Export CSV ──────────────────────────────────────────────────────────────
+  // ── Export XLSX ─────────────────────────────────────────────────────────────
 
-  function exportCSV() {
-    const headers = ['Date', 'Vehicle', 'Plate', 'Expense Type', 'Cost (₱)', 'Vendor', 'Notes', 'Receipt Count'];
-    const rows = filteredExpenses.map(e => {
-      const v = vehicles.find(x => x.id === e.vehicleId);
-      const receiptCount = ((e as any).receiptPhotoUrls?.length) || (e.receiptPhotoUrl ? 1 : 0);
-      return [e.date, e.vehicleName, v?.plateNumber || '', e.expenseType, e.cost.toFixed(2), e.vendor, e.notes, receiptCount];
-    });
-    const csv = [headers, ...rows]
-      .map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = `vehicle-expenses-${today}.csv`;
-    a.click();
+  function handleExportExpenses() {
+    if (filteredExpenses.length > 0) {
+      exportVehicleExpenses(filteredExpenses);
+    }
   }
 
   // ─── Render ─────────────────────────────────────────────────────────────────
-
-  const loading = loadingV || loadingE;
 
   return (
     <div className="space-y-4">
@@ -716,20 +694,28 @@ export default function VehicleTab() {
         </div>
         <div className="flex gap-2">
           {subView === 'overview' && (
-            <button onClick={openAddVehicle} className="btn-primary">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
-              </svg>
-              Add Vehicle
-            </button>
-          )}
-          {subView === 'expenses' && (
             <>
-              <button onClick={exportCSV} className="btn-secondary flex items-center gap-2">
+              <button onClick={() => exportVehicles(vehicles)} className="btn-secondary flex items-center gap-2">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
                 </svg>
-                Export CSV
+                Export XLSX
+              </button>
+              <button onClick={openAddVehicle} className="btn-primary">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
+                </svg>
+                Add Vehicle
+              </button>
+            </>
+          )}
+          {subView === 'expenses' && (
+            <>
+              <button onClick={handleExportExpenses} className="btn-secondary flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                </svg>
+                Export XLSX
               </button>
               <button onClick={openAddExpense} className="btn-primary">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

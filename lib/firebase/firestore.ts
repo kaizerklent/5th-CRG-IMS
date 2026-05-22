@@ -13,6 +13,7 @@ import {
   Vehicle,
   VehicleExpense,
   CustomCategory,
+  VendorReturn,           // ← NEW import
 } from '../types/inventory';
 
 // ─── Snapshot helpers ────────────────────────────────────────────────────────
@@ -376,4 +377,78 @@ export async function markReturned(
   }
 
   await batch.commit();
+}
+
+// ─── Vendor Returns ───────────────────────────────────────────────────────────
+
+/**
+ * Subscribe to all vendor return records, ordered newest first.
+ */
+export function subscribeVendorReturns(
+  cb: (returns: VendorReturn[]) => void
+): Unsubscribe {
+  return onSnapshot(
+    query(collection(db, 'vendorReturns'), orderBy('createdAt', 'desc')),
+    s => cb(s.docs.map(d => ({ id: d.id, ...d.data() } as VendorReturn)))
+  );
+}
+
+/**
+ * Submit a vendor return for a high-value inventory item.
+ * - Creates a `vendorReturns` document
+ * - Updates the inventory item status to "Returned to Vendor"
+ * - Logs an adminHistory entry with action: 'vendorReturn'
+ */
+export async function submitVendorReturn(
+  item: InventoryItem,
+  data: {
+    vendorName: string;
+    vendorContact: string;
+    vendorAddress: string;
+    returnDate: string;
+    reason: string;
+    notes: string;
+    proofPhotoUrls: string[];
+  },
+  adminName: string
+): Promise<string> {
+  const batch = writeBatch(db);
+
+  // 1. Create the vendorReturn document
+  const returnRef = doc(collection(db, 'vendorReturns'));
+  batch.set(returnRef, {
+    itemId:          item.id,
+    itemName:        item.name,
+    inventoryNumber: item.inventoryNumber,
+    serialNumber:    item.serialNumber,
+    category:        item.category,
+    itemValue:       item.value ?? null,
+    vendorName:      data.vendorName,
+    vendorContact:   data.vendorContact,
+    vendorAddress:   data.vendorAddress,
+    returnDate:      data.returnDate,
+    reason:          data.reason,
+    notes:           data.notes,
+    proofPhotoUrls:  data.proofPhotoUrls,
+    adminName,
+    createdAt:       serverTimestamp(),
+  });
+
+  // 2. Update the inventory item status
+  batch.update(doc(db, 'inventory', item.id), {
+    status: 'Returned to Vendor',
+  });
+
+  await batch.commit();
+
+  // 3. Log to adminHistory (outside batch — uses logHistory helper)
+  await logHistory({
+    action:   'vendorReturn',
+    itemId:   item.id,
+    itemName: item.name,
+    adminName,
+    details:  `Vendor Return: ${item.name}${item.inventoryNumber ? ` (${item.inventoryNumber})` : ''} returned to ${data.vendorName}. Reason: ${data.reason}`,
+  });
+
+  return returnRef.id;
 }

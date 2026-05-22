@@ -3,15 +3,20 @@ import { useState, useEffect, useRef } from 'react';
 import { InventoryItem, CustomCategory } from '@/lib/types/inventory';
 import { useAuth } from '@/lib/firebase/AuthContext';
 import {
-  subscribeInventory, addInventoryItem,
-  updateInventoryItem, deleteInventoryItem,
-  subscribeCategories,
+  addInventoryItem, updateInventoryItem, deleteInventoryItem,
 } from '@/lib/firebase/firestore';
 import MultiImageUploader from '@/components/admin/Multiimageuploader';
 import { useSystemSettings } from '@/lib/hooks/useSystemSettings';
 import { resolveImages, resolvePrimaryImage } from '@/lib/utils/Images';
+import { exportInventory } from '@/lib/utils/exportXLSX';
 
 type FormData = Omit<InventoryItem,'id'|'createdAt'|'borrowedBy'|'borrowRequestId'>;
+
+interface InventoryTabProps {
+  items: InventoryItem[];
+  loading: boolean;
+  categories: CustomCategory[];
+}
 type ModalMode = 'add'|'edit'|'view'|null;
 
 const EMPTY: FormData = {
@@ -20,6 +25,7 @@ const EMPTY: FormData = {
   inventoryNumber:'', serialNumber:'', officeOwner:'',
   dateAcquired:'', inventoryDate:'',
   imageUrl: null, imageUrls: [],
+  value: null,   // ← NEW
   notes:'',
 };
 
@@ -262,15 +268,12 @@ function printSticker(form: FormData) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function InventoryTab() {
+export default function InventoryTab({ items, loading, categories }: InventoryTabProps) {
   const { user } = useAuth();
   const adminName = user?.displayName || user?.email || 'Admin';
   const settings = useSystemSettings();
   const PER_PAGE = settings.itemsPerPage;
 
-  const [items, setItems]             = useState<InventoryItem[]>([]);
-  const [categories, setCategories]   = useState<CustomCategory[]>([]);
-  const [loading, setLoading]         = useState(true);
   const [search, setSearch]           = useState('');
   const [catFilter, setCat]           = useState('All');
   const [stFilter, setSt]             = useState('All');
@@ -289,13 +292,6 @@ export default function InventoryTab() {
   const [lightboxUrls, setLightboxUrls] = useState<string[]|null>(null);
   const [lightboxIdx, setLightboxIdx]   = useState(0);
 
-  useEffect(() => {
-    const u1 = subscribeInventory(data => { setItems(data); setLoading(false); });
-    const u2 = subscribeCategories(data => setCategories(data));
-    return () => { u1(); u2(); };
-  }, []);
-
-  // Category names for dropdowns — always include "All" for filter
   const catNames = categories.map(c => c.name);
 
   const filtered = items.filter(item => {
@@ -325,6 +321,7 @@ export default function InventoryTab() {
       inventoryDate: item.inventoryDate,
       imageUrl: item.imageUrl,
       imageUrls: imgs,
+      value: item.value ?? null,   // ← NEW
       notes: item.notes,
     });
     setSelItem(item); setSaveErr(null); setShowSticker(false); setModal('edit');
@@ -376,6 +373,14 @@ export default function InventoryTab() {
     finally { setDeleting(false); }
   }
 
+  // ── Status badge color ────────────────────────────────────────────────────
+
+  function statusBadge(status: string) {
+    if (status === 'Available')          return <span className="badge-available">Available</span>;
+    if (status === 'Returned to Vendor') return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700">Returned to Vendor</span>;
+    return <span className="badge-unavailable">Unavailable</span>;
+  }
+
   return (
     <div className="w-full space-y-4">
 
@@ -399,7 +404,14 @@ export default function InventoryTab() {
           <option value="All">All Statuses</option>
           <option value="Available">Available</option>
           <option value="Unavailable">Unavailable</option>
+          <option value="Returned to Vendor">Returned to Vendor</option> {/* ← NEW */}
         </select>
+        <button onClick={() => exportInventory(items)} className="btn-secondary flex items-center gap-2">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+          </svg>
+          Export XLSX
+        </button>
         <button onClick={openAdd} className="btn-primary">
           <svg className="w-4 h-4" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/>
@@ -460,6 +472,11 @@ export default function InventoryTab() {
                         <div>
                           <p className="font-medium text-gray-800">{item.name}</p>
                           {item.borrowedBy && <p className="text-xs text-blue-600">Borrowed by: {item.borrowedBy}</p>}
+                          {item.value != null && (
+                            <p className="text-xs text-gray-400">
+                              ₱{item.value.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -470,9 +487,7 @@ export default function InventoryTab() {
                         {item.condition}
                       </span>
                     </td>
-                    <td className="px-5 py-4">
-                      <span className={item.status==='Available'?'badge-available':'badge-unavailable'}>{item.status}</span>
-                    </td>
+                    <td className="px-5 py-4">{statusBadge(item.status)}</td>
                     <td className="px-5 py-4 text-gray-600 font-mono text-xs">{item.inventoryNumber||'—'}</td>
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-1">
@@ -545,7 +560,6 @@ export default function InventoryTab() {
                   <select id="field-category" value={form.category} onChange={e => upd('category', e.target.value)} className="input-base bg-white">
                     <option value="">Select category</option>
                     {catNames.map(c => <option key={c} value={c}>{c}</option>)}
-                    {/* Show current value even if category was deleted from Firestore */}
                     {form.category && !catNames.includes(form.category) && (
                       <option value={form.category}>{form.category} (removed)</option>
                     )}
@@ -586,6 +600,7 @@ export default function InventoryTab() {
                   <select id="field-status" value={form.status} disabled={form.quantity===0} onChange={e => upd('status', e.target.value)} className="input-base bg-white disabled:bg-gray-100 disabled:text-gray-400">
                     <option value="Available">Available</option>
                     <option value="Unavailable">Unavailable</option>
+                    <option value="Returned to Vendor">Returned to Vendor</option> {/* ← NEW */}
                   </select>
                 </div>
 
@@ -612,6 +627,30 @@ export default function InventoryTab() {
                 <div>
                   <label htmlFor="field-inv-date" className="block text-sm font-medium text-gray-700 mb-1">Last Inventory Date</label>
                   <input id="field-inv-date" type="date" value={form.inventoryDate} onChange={e => upd('inventoryDate', e.target.value)} className="input-base"/>
+                </div>
+
+                {/* ── Item Value ── NEW ── */}
+                <div>
+                  <label htmlFor="field-value" className="block text-sm font-medium text-gray-700 mb-1">
+                    Item Value
+                    <span className="text-xs text-gray-400 font-normal ml-1">(optional)</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm select-none">₱</span>
+                    <input
+                      id="field-value"
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      value={form.value ?? ''}
+                      onChange={e => upd('value', e.target.value ? parseFloat(e.target.value) : null)}
+                      placeholder="0.00"
+                      className="input-base pl-7"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Items valued ₱50,000+ will appear in the Vendor Returns tab.
+                  </p>
                 </div>
 
                 <div className="col-span-2">
@@ -706,6 +745,14 @@ export default function InventoryTab() {
                   <Field label="Date Acquired"  value={selItem.dateAcquired}/>
                   <Field label="Last Inventory" value={selItem.inventoryDate}/>
                   <Field label="Borrowed By"    value={selItem.borrowedBy||'—'}/>
+                  {/* ── Item Value ── NEW ── */}
+                  <Field
+                    label="Item Value"
+                    value={selItem.value != null
+                      ? `₱${selItem.value.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`
+                      : '—'
+                    }
+                  />
                   {selItem.notes && (
                     <div className="col-span-2 bg-gray-50 rounded-lg px-3 py-2.5">
                       <p className="text-xs text-gray-500 mb-0.5">Notes</p>
@@ -722,7 +769,7 @@ export default function InventoryTab() {
                     inventoryNumber: selItem.inventoryNumber, serialNumber: selItem.serialNumber,
                     officeOwner: selItem.officeOwner, dateAcquired: selItem.dateAcquired,
                     inventoryDate: selItem.inventoryDate, imageUrl: selItem.imageUrl,
-                    imageUrls: imgs, notes: selItem.notes,
+                    imageUrls: imgs, value: selItem.value ?? null, notes: selItem.notes,
                   }}/>
                 </div>
               </div>
@@ -734,7 +781,7 @@ export default function InventoryTab() {
                   inventoryNumber: selItem.inventoryNumber, serialNumber: selItem.serialNumber,
                   officeOwner: selItem.officeOwner, dateAcquired: selItem.dateAcquired,
                   inventoryDate: selItem.inventoryDate, imageUrl: selItem.imageUrl,
-                  imageUrls: imgs, notes: selItem.notes,
+                  imageUrls: imgs, value: selItem.value ?? null, notes: selItem.notes,
                 })} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 text-sm font-medium hover:bg-blue-100 transition">
                   <svg className="w-4 h-4" aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>

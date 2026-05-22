@@ -98,7 +98,6 @@ function InventoryCategoriesSection() {
     return () => { u1(); u2(); };
   }, []);
 
-  // Check how many inventory items use a given category name
   function usageCount(catName: string): number {
     return inventoryItems.filter(i => i.category === catName).length;
   }
@@ -106,170 +105,97 @@ function InventoryCategoriesSection() {
   async function handleAdd() {
     const trimmed = newCatName.trim();
     if (!trimmed) return;
-
-    // Duplicate check (case-insensitive)
-    const isDuplicate = categories.some(
-      c => c.name.toLowerCase() === trimmed.toLowerCase()
-    );
-    if (isDuplicate) {
-      setAddErr(`"${trimmed}" already exists.`);
-      return;
-    }
-
-    setAdding(true);
-    setAddErr(null);
+    const isDuplicate = categories.some(c => c.name.toLowerCase() === trimmed.toLowerCase());
+    if (isDuplicate) { setAddErr(`"${trimmed}" already exists.`); return; }
+    setAdding(true); setAddErr(null);
     try {
       await addCategory(trimmed, adminName);
       setNewCatName('');
       setAddSuccess(true);
       setTimeout(() => setAddSuccess(false), 3000);
-    } catch {
-      setAddErr('Failed to add category. Please try again.');
-    } finally {
-      setAdding(false);
-    }
+    } catch { setAddErr('Failed to add category. Please try again.'); }
+    finally { setAdding(false); }
   }
 
   async function handleDelete(cat: CustomCategory) {
-    // Protected category
     if (cat.name === 'Other') {
       setDeleteErr('"Other" is a protected category and cannot be deleted.');
       setTimeout(() => setDeleteErr(null), 4000);
       return;
     }
-
-    // In-use check
     const count = usageCount(cat.name);
     if (count > 0) {
-      setDeleteErr(
-        `"${cat.name}" is used by ${count} item${count !== 1 ? 's' : ''} in inventory. Remove or reassign those items before deleting this category.`
-      );
+      setDeleteErr(`"${cat.name}" is used by ${count} item${count !== 1 ? 's' : ''} in inventory. Remove or reassign those items before deleting this category.`);
       setTimeout(() => setDeleteErr(null), 5000);
       return;
     }
-
-    setDeletingId(cat.id);
-    setDeleteErr(null);
-    try {
-      await deleteCategory(cat.id, cat.name, adminName);
-    } catch {
-      setDeleteErr('Failed to delete category. Please try again.');
-    } finally {
-      setDeletingId(null);
-    }
+    setDeletingId(cat.id); setDeleteErr(null);
+    try { await deleteCategory(cat.id, cat.name, adminName); }
+    catch { setDeleteErr('Failed to delete category. Please try again.'); }
+    finally { setDeletingId(null); }
   }
 
   const loading = loadingCats || loadingItems;
 
   return (
     <div className="space-y-4 pt-4">
-
-      {/* Add new category */}
       <div>
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Add Category</p>
         <div className="flex gap-2">
-          <input
-            type="text"
-            value={newCatName}
+          <input type="text" value={newCatName}
             onChange={e => { setNewCatName(e.target.value); setAddErr(null); }}
             onKeyDown={e => e.key === 'Enter' && handleAdd()}
             placeholder="e.g. Camera, Projector..."
-            className="input-base flex-1"
-            disabled={adding}
-            maxLength={40}
-          />
-          <button
-            type="button"
-            onClick={handleAdd}
-            disabled={adding || !newCatName.trim()}
-            className="btn-primary px-5 flex-shrink-0"
-          >
+            className="input-base flex-1" disabled={adding} maxLength={40}/>
+          <button type="button" onClick={handleAdd} disabled={adding || !newCatName.trim()} className="btn-primary px-5 flex-shrink-0">
             {adding ? <><Spinner sm/> Adding...</> : 'Add'}
           </button>
         </div>
         {addErr && <p className="text-xs text-red-600 mt-1.5">{addErr}</p>}
         {addSuccess && <p className="text-xs text-green-600 mt-1.5">Category added successfully.</p>}
       </div>
-
-      {/* Delete error banner */}
       {deleteErr && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-          {deleteErr}
-        </div>
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{deleteErr}</div>
       )}
-
-      {/* Category list */}
       <div>
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
           Current Categories
-          {!loading && (
-            <span className="ml-2 font-normal text-gray-400 normal-case">({categories.length})</span>
-          )}
+          {!loading && <span className="ml-2 font-normal text-gray-400 normal-case">({categories.length})</span>}
         </p>
-
         {loading ? (
-          <div className="flex items-center gap-2 text-gray-400 text-sm py-4">
-            <Spinner/> Loading categories...
-          </div>
+          <div className="flex items-center gap-2 text-gray-400 text-sm py-4"><Spinner/> Loading categories...</div>
         ) : categories.length === 0 ? (
-          <p className="text-sm text-gray-400 py-4 text-center">
-            No categories yet. Add your first one above.
-          </p>
+          <p className="text-sm text-gray-400 py-4 text-center">No categories yet. Add your first one above.</p>
         ) : (
           <div className="flex flex-wrap gap-2">
             {categories.map(cat => {
-              const count    = usageCount(cat.name);
-              const isOther  = cat.name === 'Other';
+              const count = usageCount(cat.name);
+              const isOther = cat.name === 'Other';
               const isDeleting = deletingId === cat.id;
-
               return (
-                <div
-                  key={cat.id}
+                <div key={cat.id}
                   className={`inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1.5 rounded-full text-sm font-medium border transition
-                    ${isOther
-                      ? 'bg-gray-100 border-gray-200 text-gray-500'
-                      : 'bg-purple-50 border-purple-200 text-purple-800'
-                    }`}
-                >
+                    ${isOther ? 'bg-gray-100 border-gray-200 text-gray-500' : 'bg-purple-50 border-purple-200 text-purple-800'}`}>
                   <span>{cat.name}</span>
-
-                  {/* Usage count badge */}
                   {count > 0 && (
-                    <span className="text-xs bg-white border border-gray-200 text-gray-500 px-1.5 py-0.5 rounded-full font-normal">
-                      {count}
-                    </span>
+                    <span className="text-xs bg-white border border-gray-200 text-gray-500 px-1.5 py-0.5 rounded-full font-normal">{count}</span>
                   )}
-
-                  {/* Delete button */}
                   {isOther ? (
-                    <span
-                      title="Protected — cannot be deleted"
-                      className="w-5 h-5 rounded-full flex items-center justify-center text-gray-300 cursor-not-allowed flex-shrink-0"
-                    >
+                    <span title="Protected — cannot be deleted" className="w-5 h-5 rounded-full flex items-center justify-center text-gray-300 cursor-not-allowed flex-shrink-0">
                       <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m0-10v4m-6.364 1.636l1.414-1.414M18.364 5.636l-1.414 1.414M5.636 18.364l1.414-1.414M18.364 18.364l-1.414-1.414"/>
                       </svg>
                     </span>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(cat)}
-                      disabled={isDeleting}
+                    <button type="button" onClick={() => handleDelete(cat)} disabled={isDeleting}
                       title={count > 0 ? `In use by ${count} item${count !== 1 ? 's' : ''}` : `Delete "${cat.name}"`}
                       className={`w-5 h-5 rounded-full flex items-center justify-center transition flex-shrink-0
-                        ${count > 0
-                          ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                          : 'bg-red-100 text-red-500 hover:bg-red-200 hover:text-red-700'
-                        }`}
-                    >
-                      {isDeleting
-                        ? <Spinner sm/>
-                        : (
-                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
-                          </svg>
-                        )
-                      }
+                        ${count > 0 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-red-100 text-red-500 hover:bg-red-200 hover:text-red-700'}`}>
+                      {isDeleting ? <Spinner sm/> : (
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                      )}
                     </button>
                   )}
                 </div>
@@ -277,7 +203,6 @@ function InventoryCategoriesSection() {
             })}
           </div>
         )}
-
         {!loading && categories.length > 0 && (
           <p className="text-xs text-gray-400 mt-3">
             The number badge shows how many inventory items use that category. Categories in use cannot be deleted — reassign those items first.
@@ -292,9 +217,9 @@ function InventoryCategoriesSection() {
 // ─── System Settings section ──────────────────────────────────────────────────
 
 function SystemSettingsSection() {
-  const [settings, setSettings]   = useState<SystemSettings>(DEFAULT_SETTINGS);
-  const [loaded, setLoaded]       = useState(false);
-  const [saved, setSaved]         = useState(false);
+  const [settings, setSettings] = useState<SystemSettings>(DEFAULT_SETTINGS);
+  const [loaded, setLoaded]     = useState(false);
+  const [saved, setSaved]       = useState(false);
 
   useEffect(() => {
     setSettings(loadSystemSettings());
@@ -342,24 +267,20 @@ function SystemSettingsSection() {
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Default Return Period <span className="text-xs text-gray-400">(days)</span>
             </label>
-            <input
-              type="number" min={1} max={365}
+            <input type="number" min={1} max={365}
               value={settings.defaultReturnDays}
               onChange={e => upd('defaultReturnDays', Math.max(1, parseInt(e.target.value) || 1))}
-              className="input-base"
-            />
+              className="input-base"/>
             <p className="text-xs text-gray-400 mt-1">Pre-fills the return date field in Borrow tab.</p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Overdue Threshold <span className="text-xs text-gray-400">(days past due)</span>
             </label>
-            <input
-              type="number" min={0} max={30}
+            <input type="number" min={0} max={30}
               value={settings.overdueThresholdDays}
               onChange={e => upd('overdueThresholdDays', Math.max(0, parseInt(e.target.value) || 0))}
-              className="input-base"
-            />
+              className="input-base"/>
             <p className="text-xs text-gray-400 mt-1">0 = flag immediately when past due date.</p>
           </div>
         </div>
@@ -378,12 +299,9 @@ function SystemSettingsSection() {
                 <p className="text-sm font-medium text-gray-700">{label}</p>
                 <p className="text-xs text-gray-400">{desc}</p>
               </div>
-              <button
-                type="button"
-                onClick={() => upd(key, !settings[key])}
+              <button type="button" onClick={() => upd(key, !settings[key])}
                 className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none
-                  ${settings[key] ? 'bg-purple-600' : 'bg-gray-300'}`}
-              >
+                  ${settings[key] ? 'bg-purple-600' : 'bg-gray-300'}`}>
                 <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200
                   ${settings[key] ? 'translate-x-5' : 'translate-x-0'}`}/>
               </button>
@@ -397,16 +315,38 @@ function SystemSettingsSection() {
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Table Display</p>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Items Per Page</label>
-          <select
-            value={settings.itemsPerPage}
+          <select value={settings.itemsPerPage}
             onChange={e => upd('itemsPerPage', parseInt(e.target.value))}
-            className="input-base bg-white w-40"
-          >
+            className="input-base bg-white w-40">
             {[5, 8, 10, 15, 20, 25].map(n => (
               <option key={n} value={n}>{n} rows</option>
             ))}
           </select>
           <p className="text-xs text-gray-400 mt-1">Applies to Inventory, Borrowed, Returned, and History tabs on next load.</p>
+        </div>
+      </div>
+
+      {/* ── Vendor Return threshold ── NEW ── */}
+      <div className="border-t border-gray-100 pt-5">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Vendor Return</p>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Return Threshold <span className="text-xs text-gray-400">(₱ minimum item value)</span>
+          </label>
+          <div className="relative w-52">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm select-none">₱</span>
+            <input
+              type="number"
+              min={1}
+              step={1000}
+              value={settings.vendorReturnThreshold}
+              onChange={e => upd('vendorReturnThreshold', Math.max(1, parseInt(e.target.value) || 50000))}
+              className="input-base pl-7"
+            />
+          </div>
+          <p className="text-xs text-gray-400 mt-1">
+            Items at or above this value will appear in the Vendor Returns tab for potential return to supplier. Default: ₱50,000.
+          </p>
         </div>
       </div>
 
@@ -430,15 +370,16 @@ function SystemSettingsSection() {
 // ─── Audit Log section ────────────────────────────────────────────────────────
 
 const ACTION_STYLES: Record<string, { bg: string; text: string; icon: string }> = {
-  add:    { bg: 'bg-green-100', text: 'text-green-700', icon: 'M12 4v16m8-8H4' },
-  update: { bg: 'bg-blue-100',  text: 'text-blue-700',  icon: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' },
-  delete: { bg: 'bg-red-100',   text: 'text-red-700',   icon: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16' },
+  add:          { bg: 'bg-green-100',  text: 'text-green-700',  icon: 'M12 4v16m8-8H4' },
+  update:       { bg: 'bg-blue-100',   text: 'text-blue-700',   icon: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' },
+  delete:       { bg: 'bg-red-100',    text: 'text-red-700',    icon: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16' },
+  vendorReturn: { bg: 'bg-orange-100', text: 'text-orange-700', icon: 'M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6' }, // ← NEW
 };
 
 function AuditLogSection() {
-  const [logs, setLogs]     = useState<AdminHistory[]>([]);
+  const [logs, setLogs]       = useState<AdminHistory[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'add' | 'update' | 'delete'>('all');
+  const [filter, setFilter]   = useState<'all' | 'add' | 'update' | 'delete' | 'vendorReturn'>('all');
 
   useEffect(() => {
     const q = query(collection(db, 'adminHistory'), orderBy('timestamp', 'desc'), limit(100));
@@ -463,19 +404,17 @@ function AuditLogSection() {
   return (
     <div className="pt-4 space-y-4">
       <div className="flex gap-2 flex-wrap">
-        {(['all', 'add', 'update', 'delete'] as const).map(f => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
+        {(['all', 'add', 'update', 'delete', 'vendorReturn'] as const).map(f => (
+          <button key={f} onClick={() => setFilter(f)}
             className={`px-3 py-1.5 rounded-full text-xs font-semibold capitalize transition
               ${filter === f
-                ? f === 'all' ? 'bg-purple-700 text-white'
-                  : f === 'add' ? 'bg-green-600 text-white'
-                  : f === 'update' ? 'bg-blue-600 text-white'
-                  : 'bg-red-600 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
-          >
-            {f === 'all' ? 'All Actions' : f}
+                ? f === 'all'          ? 'bg-purple-700 text-white'
+                  : f === 'add'        ? 'bg-green-600 text-white'
+                  : f === 'update'     ? 'bg-blue-600 text-white'
+                  : f === 'delete'     ? 'bg-red-600 text-white'
+                  : 'bg-orange-500 text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
+            {f === 'all' ? 'All Actions' : f === 'vendorReturn' ? 'Vendor Return' : f}
           </button>
         ))}
         <span className="ml-auto text-xs text-gray-400 self-center">Last 100 actions</span>
@@ -506,7 +445,7 @@ function AuditLogSection() {
                 </div>
               </div>
               <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0 capitalize ${style.bg} ${style.text}`}>
-                {log.action}
+                {log.action === 'vendorReturn' ? 'Vendor Return' : log.action}
               </span>
             </div>
           );
@@ -549,10 +488,14 @@ function DataExportSection() {
         inventory.map(i => [
           i.name, i.category, i.isUnique ? 'Unique' : 'Bulk', String(i.quantity),
           i.condition, i.status, i.inventoryNumber, i.serialNumber,
-          i.officeOwner, i.dateAcquired, i.inventoryDate, i.notes, i.borrowedBy || '',
+          i.officeOwner, i.dateAcquired, i.inventoryDate, i.notes,
+          i.value != null ? String(i.value) : '',   // ← include value in export
+          i.borrowedBy || '',
         ]),
         ['Name','Category','Asset Type','Quantity','Condition','Status','Inventory No.',
-         'Serial No.','Office Owner','Date Acquired','Inventory Date','Notes','Borrowed By'],
+         'Serial No.','Office Owner','Date Acquired','Inventory Date','Notes',
+         'Value (₱)',   // ← NEW column
+         'Borrowed By'],
       );
     } finally { setExporting(null); }
   }
@@ -647,11 +590,8 @@ function DataExportSection() {
                   <p className="text-xs text-gray-400">{exp.desc}</p>
                 </div>
               </div>
-              <button
-                onClick={exp.action}
-                disabled={!!exporting}
-                className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-gray-200 bg-gray-50 hover:bg-purple-50 hover:border-purple-300 text-sm font-medium text-gray-700 hover:text-purple-700 transition disabled:opacity-50"
-              >
+              <button onClick={exp.action} disabled={!!exporting}
+                className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-gray-200 bg-gray-50 hover:bg-purple-50 hover:border-purple-300 text-sm font-medium text-gray-700 hover:text-purple-700 transition disabled:opacity-50">
                 {exporting === exp.key
                   ? <><Spinner sm/> Exporting...</>
                   : <>
@@ -706,12 +646,12 @@ function AccountSecuritySection({ user }: { user: any }) {
   const providerLabel = providers.includes('password') ? 'Email / Password' : providers.join(', ') || 'Unknown';
 
   const infoRows = [
-    { label: 'Account Created',   value: accountCreated },
-    { label: 'Last Sign-In',      value: lastSignIn },
-    { label: 'Current Session',   value: sessionDuration() },
-    { label: 'Auth Provider',     value: providerLabel },
-    { label: 'User ID',           value: user?.uid || '—', mono: true },
-    { label: 'Email Verified',    value: user?.emailVerified ? '✓ Verified' : '✗ Not verified',
+    { label: 'Account Created', value: accountCreated },
+    { label: 'Last Sign-In',    value: lastSignIn },
+    { label: 'Current Session', value: sessionDuration() },
+    { label: 'Auth Provider',   value: providerLabel },
+    { label: 'User ID',         value: user?.uid || '—', mono: true },
+    { label: 'Email Verified',  value: user?.emailVerified ? '✓ Verified' : '✗ Not verified',
       color: user?.emailVerified ? 'text-green-600' : 'text-red-600' },
   ];
 
@@ -727,7 +667,6 @@ function AccountSecuritySection({ user }: { user: any }) {
           </div>
         ))}
       </div>
-
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
         <p className="text-xs font-semibold text-amber-800 mb-2 flex items-center gap-1.5">
           <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
@@ -865,7 +804,6 @@ export default function ProfileTab() {
 
   return (
     <div className="w-full max-w-5xl mx-auto space-y-4">
-
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <SectionCard
           title="Profile & Password"
@@ -908,7 +846,6 @@ export default function ProfileTab() {
       >
         <AuditLogSection/>
       </SectionCard>
-
     </div>
   );
 }

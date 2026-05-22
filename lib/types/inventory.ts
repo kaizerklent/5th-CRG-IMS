@@ -9,7 +9,7 @@ export interface InventoryItem {
   isUnique: boolean;
   quantity: number;
   condition: string;
-  status: 'Available' | 'Unavailable';
+  status: 'Available' | 'Unavailable'| 'Returned to Vendor';
   inventoryNumber: string;
   serialNumber: string;
   officeOwner: string;
@@ -17,6 +17,7 @@ export interface InventoryItem {
   inventoryDate: string;
   imageUrl: string | null;        // keep — backward compat for old single-image records
   imageUrls?: string[];           // new — multi-image support (first image = primary thumbnail)
+  value: number | null;
   notes: string;
   borrowedBy: string | null;
   borrowRequestId: string | null;
@@ -56,7 +57,7 @@ export interface BorrowRequest {
 
 export interface AdminHistory {
   id: string;
-  action: 'add' | 'update' | 'delete';
+  action: 'add' | 'update' | 'delete' | 'vendorReturn';
   itemId: string;
   itemName: string;
   adminName: string;
@@ -100,6 +101,28 @@ export interface CustomCategory {
   createdAt: Timestamp | null;
 }
 
+// ─── Vendor Returns ───────────────────────────────────────────────────────────
+ 
+export interface VendorReturn {
+  id: string;
+  itemId: string;
+  itemName: string;
+  inventoryNumber: string;
+  serialNumber: string;
+  category: string;
+  itemValue: number | null;       // snapshot of item value at time of return
+  vendorName: string;             // store / org / supplier name
+  vendorContact: string;          // phone or email
+  vendorAddress: string;          // full address
+  returnDate: string;             // ISO date string YYYY-MM-DD
+  reason: string;                 // why it is being returned
+  notes: string;                  // optional extra notes
+  proofPhotoUrls: string[];       // Cloudinary URLs — proof of return photos
+  adminName: string;              // who processed this return
+  createdAt: Timestamp | null;
+}
+ 
+
 // ─── Tab IDs ──────────────────────────────────────────────────────────────────
 
 export type TabId =
@@ -108,6 +131,7 @@ export type TabId =
   | 'borrowed'
   | 'returned'
   | 'inventory'
+  | 'vendor-return'
   | 'history'
   | 'vehicle'
   | 'profile';

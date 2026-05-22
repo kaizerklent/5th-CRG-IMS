@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { BorrowRequest } from '@/lib/types/inventory';
 import { useSystemSettings } from '@/lib/hooks/useSystemSettings';
+import { exportBorrows } from '@/lib/utils/exportXLSX';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -248,39 +249,14 @@ export default function ReturnedTab({ requests, loading }: ReturnedTabProps) {
 
   const damagedCount = requests.filter(r => r.returnCondition === 'Damaged').length;
 
-  // ── Phase 4.1: Dual CSV export ────────────────────────────────────────────
-
-  function buildCSVRows(data: BorrowRequest[]) {
-    return data.map(r => [
-      r.id, r.borrowerName, r.borrowerDepartment, r.borrowerContact,
-      r.items.map(i => i.itemName).join('|'),
-      r.items.map(i => i.inventoryNumber).join('|'),
-      r.items.map(i => i.serialNumber).join('|'),
-      r.borrowDate, r.returnDate || 'N/A', fmtDate(r.returnedAt),
-      r.returnCondition || '', r.returnNotes || '',
-      resolvePhotos(r).length,
-    ]);
-  }
-
-  function downloadCSV(rows: any[][], filename: string) {
-    const headers = ['Ref ID', 'Borrower', 'Department', 'Contact', 'Items', 'Inventory No.', 'Serial No.', 'Borrow Date', 'Due Date', 'Returned At', 'Condition', 'Notes', 'Photo Count'];
-    const csv = [headers, ...rows]
-      .map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = filename;
-    a.click();
-  }
+  // ── Dual XLSX Export ───────────────────────────────────────────────────────
 
   function exportFiltered() {
-    const today = new Date().toISOString().split('T')[0];
-    downloadCSV(buildCSVRows(filtered), `returned-filtered-${today}.csv`);
+    exportBorrows(filtered);
   }
 
   function exportAll() {
-    const today = new Date().toISOString().split('T')[0];
-    downloadCSV(buildCSVRows(requests), `returned-ALL-${today}.csv`);
+    exportBorrows(requests);
   }
 
   function toggleNotes(id: string) {
@@ -370,7 +346,7 @@ export default function ReturnedTab({ requests, loading }: ReturnedTabProps) {
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
               </svg>
-              Export CSV
+              Export XLSX
             </button>
           )}
         </div>

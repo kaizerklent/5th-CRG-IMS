@@ -1,9 +1,15 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { InventoryItem, CustomCategory } from '@/lib/types/inventory';
-import { subscribeAvailableInventory, submitBorrowRequest, SelectedBorrowItem, subscribeCategories } from '@/lib/firebase/firestore';
+import { submitBorrowRequest, SelectedBorrowItem } from '@/lib/firebase/firestore';
 import { useSystemSettings } from '@/lib/hooks/useSystemSettings';
 import { resolveImages, resolvePrimaryImage } from '@/lib/utils/Images';
+
+interface BorrowTabProps {
+  items: InventoryItem[];
+  loadingItems: boolean;
+  categories: CustomCategory[];
+}
 
 function Spinner() {
   return (
@@ -346,12 +352,9 @@ function ItemRow({
 
 // ─── Main BorrowTab ───────────────────────────────────────────────────────────
 
-export default function BorrowTab() {
+export default function BorrowTab({ items, loadingItems, categories }: BorrowTabProps) {
   const settings = useSystemSettings();
 
-  const [items, setItems]           = useState<InventoryItem[]>([]);
-  const [loadingItems, setLoading]  = useState(true);
-  const [categories, setCategories] = useState<CustomCategory[]>([]);
   const [search, setSearch]         = useState('');
   const [cat, setCat]               = useState('All');
   const [selected, setSelected]     = useState<SelectedBorrowItem[]>([]);
@@ -374,12 +377,6 @@ export default function BorrowTab() {
   useEffect(() => {
     setReturnDate(prev => prev || defaultReturn);
   }, [defaultReturn]);
-
-  useEffect(() => {
-    const u1 = subscribeAvailableInventory(data => { setItems(data); setLoading(false); });
-    const u2 = subscribeCategories(data => setCategories(data));
-    return () => { u1(); u2(); };
-  }, []);
 
   // Remove selected items that became unavailable in real-time
   useEffect(() => {

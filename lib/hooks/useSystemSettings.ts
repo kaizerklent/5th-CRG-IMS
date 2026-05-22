@@ -8,6 +8,7 @@ export interface SystemSettings {
   showOverdueAlerts: boolean;
   showNoDueDateAlerts: boolean;
   itemsPerPage: number;
+  vendorReturnThreshold: number;  // ← NEW: minimum item value to flag for vendor return
 }
 
 export const DEFAULT_SETTINGS: SystemSettings = {
@@ -16,6 +17,7 @@ export const DEFAULT_SETTINGS: SystemSettings = {
   showOverdueAlerts: true,
   showNoDueDateAlerts: true,
   itemsPerPage: 8,
+  vendorReturnThreshold: 50000,   // ← NEW: default ₱50,000
 };
 
 export const SETTINGS_KEY = '5crg_ims_settings';
