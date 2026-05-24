@@ -13,7 +13,7 @@ import {
   Vehicle,
   VehicleExpense,
   CustomCategory,
-  VendorReturn,           // ← NEW import
+  VendorReturn,
 } from '../types/inventory';
 
 // ─── Snapshot helpers ────────────────────────────────────────────────────────
@@ -325,6 +325,10 @@ export async function submitBorrowRequest(
     status: 'Approved', createdAt: serverTimestamp(),
     returnedAt: null, returnCondition: null,
     returnNotes: null, damagePhotoUrl: null, damagePhotoUrls: null,
+    // verification fields start as null — set on return
+    verificationPhotoUrls: null,
+    verifiedSerialNumbers: null,
+    verificationChecklist: null,
   });
 
   for (const s of selectedItems) {
@@ -349,29 +353,53 @@ export async function submitBorrowRequest(
 
 // ─── Mark returned ────────────────────────────────────────────────────────────
 
+/**
+ * Verification data passed from the return modal Step 1.
+ * All fields are optional — quick returns from the dashboard
+ * pass an empty verification object.
+ */
+export interface ReturnVerification {
+  verificationPhotoUrls: string[];   // photos of the returned item
+  verifiedSerialNumbers: string[];   // serial numbers confirmed by admin
+  verificationChecklist: boolean;    // true if checklist path was used
+}
+
 export async function markReturned(
   request: BorrowRequest,
   returnCondition: 'Good' | 'Fair' | 'Damaged',
   returnNotes: string,
-  damagePhotoUrls: string[]
+  damagePhotoUrls: string[],
+  verification: ReturnVerification = {   // ← NEW param with safe default
+    verificationPhotoUrls: [],
+    verifiedSerialNumbers: [],
+    verificationChecklist: false,
+  }
 ): Promise<void> {
   const batch = writeBatch(db);
 
   batch.update(doc(db, 'borrowRequests', request.id), {
-    status: 'Returned', returnedAt: serverTimestamp(),
-    returnCondition, returnNotes: returnNotes || null,
-    damagePhotoUrl: damagePhotoUrls[0] ?? null,
+    status:       'Returned',
+    returnedAt:   serverTimestamp(),
+    returnCondition,
+    returnNotes:  returnNotes || null,
+    damagePhotoUrl:  damagePhotoUrls[0] ?? null,
     damagePhotoUrls: damagePhotoUrls.length > 0 ? damagePhotoUrls : null,
+    // ── Verification fields ──────────────────────────────────────────────────
+    verificationPhotoUrls: verification.verificationPhotoUrls.length > 0
+      ? verification.verificationPhotoUrls : null,
+    verifiedSerialNumbers: verification.verifiedSerialNumbers.length > 0
+      ? verification.verifiedSerialNumbers : null,
+    verificationChecklist: verification.verificationChecklist || null,
   });
 
   const isDamaged = returnCondition === 'Damaged';
 
   for (const bi of request.items) {
     batch.update(doc(db, 'inventory', bi.itemId), {
-      quantity: increment(bi.quantity),
-      status: isDamaged ? 'Unavailable' : 'Available',
-      condition: returnCondition,
-      borrowedBy: null,
+      quantity:        increment(bi.quantity),
+      status:          isDamaged ? 'Unavailable' : 'Available',
+      condition:       returnCondition,
+      borrowedBy:      null,
       borrowRequestId: null,
     });
   }
@@ -381,9 +409,6 @@ export async function markReturned(
 
 // ─── Vendor Returns ───────────────────────────────────────────────────────────
 
-/**
- * Subscribe to all vendor return records, ordered newest first.
- */
 export function subscribeVendorReturns(
   cb: (returns: VendorReturn[]) => void
 ): Unsubscribe {
@@ -393,12 +418,6 @@ export function subscribeVendorReturns(
   );
 }
 
-/**
- * Submit a vendor return for a high-value inventory item.
- * - Creates a `vendorReturns` document
- * - Updates the inventory item status to "Returned to Vendor"
- * - Logs an adminHistory entry with action: 'vendorReturn'
- */
 export async function submitVendorReturn(
   item: InventoryItem,
   data: {
@@ -414,7 +433,6 @@ export async function submitVendorReturn(
 ): Promise<string> {
   const batch = writeBatch(db);
 
-  // 1. Create the vendorReturn document
   const returnRef = doc(collection(db, 'vendorReturns'));
   batch.set(returnRef, {
     itemId:          item.id,
@@ -434,14 +452,12 @@ export async function submitVendorReturn(
     createdAt:       serverTimestamp(),
   });
 
-  // 2. Update the inventory item status
   batch.update(doc(db, 'inventory', item.id), {
     status: 'Returned to Vendor',
   });
 
   await batch.commit();
 
-  // 3. Log to adminHistory (outside batch — uses logHistory helper)
   await logHistory({
     action:   'vendorReturn',
     itemId:   item.id,

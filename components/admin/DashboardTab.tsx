@@ -47,7 +47,7 @@ function Spinner({ sm }: { sm?: boolean }) {
   );
 }
 
-// ── Property Sticker (inline, read-only) ────────────────────────────────────
+// ── Property Sticker (inline, read-only) ─────────────────────────────────────
 
 function PropertySticker({ item }: { item: InventoryItem }) {
   return (
@@ -170,30 +170,10 @@ function BorrowedItemCard({ borrowedItem, inventoryItems }: {
   );
 }
 
-// ── Borrower Detail Drawer ──────────────────────────────────────────────────
-
-function getInitials(name: string) {
-  return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
-}
-
-const AVATAR_COLORS = [
-  'bg-blue-100 text-blue-800', 'bg-purple-100 text-purple-800',
-  'bg-teal-100 text-teal-800', 'bg-orange-100 text-orange-800',
-  'bg-pink-100 text-pink-800',
-];
-
-function avatarColor(name: string) {
-  let hash = 0;
-  for (const c of name) hash = (hash * 31 + c.charCodeAt(0)) % AVATAR_COLORS.length;
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
-}
-
-// ── Phase 4.3: Quick Return Confirm Modal ────────────────────────────────────
+// ── Quick Return Confirm Modal ────────────────────────────────────────────────
 
 function QuickReturnConfirm({
-  req,
-  onClose,
-  onConfirm,
+  req, onClose, onConfirm,
 }: {
   req: BorrowRequest;
   onClose: () => void;
@@ -222,12 +202,15 @@ function QuickReturnConfirm({
           <p className="text-xs text-gray-600">{req.items.map(i => i.itemName).join(', ')}</p>
         </div>
 
+        {/* ── Updated warning banner ── */}
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2.5 mb-4 flex items-start gap-2">
           <svg className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
           </svg>
           <p className="text-xs text-amber-700">
-            Quick return assumes <strong>Good condition</strong> with no damage photos. For damaged items, use the <strong>Borrowed Items</strong> tab instead.
+            Quick return assumes <strong>Good condition</strong> with no damage photos
+            and <strong>skips item verification</strong> (serial number check &amp; checklist).
+            For full verification, use the <strong>Borrowed Items</strong> tab instead.
           </p>
         </div>
 
@@ -252,6 +235,24 @@ function QuickReturnConfirm({
   );
 }
 
+// ── Borrower Detail Drawer ────────────────────────────────────────────────────
+
+function getInitials(name: string) {
+  return name.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
+}
+
+const AVATAR_COLORS = [
+  'bg-blue-100 text-blue-800', 'bg-purple-100 text-purple-800',
+  'bg-teal-100 text-teal-800', 'bg-orange-100 text-orange-800',
+  'bg-pink-100 text-pink-800',
+];
+
+function avatarColor(name: string) {
+  let hash = 0;
+  for (const c of name) hash = (hash * 31 + c.charCodeAt(0)) % AVATAR_COLORS.length;
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
 function BorrowerDrawer({
   borrow, allBorrows, inventoryItems, today, onClose,
 }: {
@@ -261,7 +262,6 @@ function BorrowerDrawer({
   today: string;
   onClose: () => void;
 }) {
-  // Phase 4.3: quick return state
   const [quickReturnReq, setQuickReturnReq] = useState<BorrowRequest | null>(null);
   const [quickReturnErr, setQuickReturnErr] = useState<string | null>(null);
 
@@ -285,15 +285,11 @@ function BorrowerDrawer({
 
   return (
     <>
-      {/* Backdrop */}
       <div className="fixed inset-0 bg-black/20 z-40" onClick={onClose} aria-hidden="true"/>
-
-      {/* Drawer panel */}
       <aside
         className="fixed right-0 top-0 h-full w-full max-w-sm bg-white border-l border-gray-200 z-50 flex flex-col shadow-xl"
         role="dialog" aria-modal="true" aria-label={`Details for ${borrow.borrowerName}`}
       >
-        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold text-sm ${avColor}`}>
@@ -311,10 +307,7 @@ function BorrowerDrawer({
           </button>
         </div>
 
-        {/* Scrollable body */}
         <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
-
-          {/* Overdue banner */}
           {isOverdue && (
             <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 flex items-center gap-2">
               <svg className="w-4 h-4 text-red-600 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
@@ -326,7 +319,6 @@ function BorrowerDrawer({
             </div>
           )}
 
-          {/* Mini stats */}
           <div className="grid grid-cols-3 gap-2">
             {[
               { label: 'Active',   value: active.length,   color: 'text-blue-700 bg-blue-50' },
@@ -340,7 +332,6 @@ function BorrowerDrawer({
             ))}
           </div>
 
-          {/* Borrow info */}
           <div className="grid grid-cols-2 gap-2">
             {[
               { label: 'Borrow Date', value: borrow.borrowDate },
@@ -356,7 +347,6 @@ function BorrowerDrawer({
             ))}
           </div>
 
-          {/* Borrowed Items */}
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
               Borrowed Items ({borrow.items.length})
@@ -368,17 +358,14 @@ function BorrowerDrawer({
             </div>
           </div>
 
-          {/* ── Phase 4.3: Active borrows with quick return ── */}
           {active.length > 0 && borrow.status === 'Approved' && (
             <div>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
                 Active Borrows — Quick Return
               </p>
-
               {quickReturnErr && (
                 <div className="mb-2 p-2.5 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">{quickReturnErr}</div>
               )}
-
               <div className="space-y-2">
                 {active.map(r => (
                   <div key={r.id} className="flex items-start justify-between bg-gray-50 rounded-lg px-3 py-2.5 gap-2">
@@ -396,11 +383,10 @@ function BorrowerDrawer({
                       }`}>
                         {r.returnDate && r.returnDate < today ? 'Overdue' : 'Active'}
                       </span>
-                      {/* Quick return button */}
                       <button
                         onClick={() => { setQuickReturnErr(null); setQuickReturnReq(r); }}
                         className="px-2.5 py-1 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold rounded-lg transition whitespace-nowrap"
-                        title="Quick return — Good condition, no damage photos"
+                        title="Quick return — Good condition, skips verification"
                       >
                         Return
                       </button>
@@ -408,14 +394,12 @@ function BorrowerDrawer({
                   </div>
                 ))}
               </div>
-
               <p className="text-xs text-gray-400 mt-2 italic">
-                Quick return assumes Good condition. For damaged items, use the Borrowed Items tab.
+                Quick return skips item verification. Use the Borrowed Items tab for full serial number or checklist verification.
               </p>
             </div>
           )}
 
-          {/* Borrow history for this person */}
           {history.length > 1 && (
             <div>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
@@ -437,9 +421,7 @@ function BorrowerDrawer({
                           ? 'bg-red-100 text-red-700'
                           : 'bg-blue-100 text-blue-700'
                     }`}>
-                      {r.status === 'Approved' && r.returnDate && r.returnDate < today
-                        ? 'Overdue'
-                        : r.status}
+                      {r.status === 'Approved' && r.returnDate && r.returnDate < today ? 'Overdue' : r.status}
                     </span>
                   </div>
                 ))}
@@ -449,13 +431,16 @@ function BorrowerDrawer({
         </div>
       </aside>
 
-      {/* Phase 4.3: Quick return confirmation modal */}
       {quickReturnReq && (
         <QuickReturnConfirm
           req={quickReturnReq}
           onClose={() => setQuickReturnReq(null)}
           onConfirm={async () => {
-            await markReturned(quickReturnReq, 'Good', '', []);
+            await markReturned(quickReturnReq, 'Good', '', [], {
+              verificationPhotoUrls: [],
+              verifiedSerialNumbers: [],
+              verificationChecklist: false,
+            });
           }}
         />
       )}
@@ -463,7 +448,7 @@ function BorrowerDrawer({
   );
 }
 
-// ── Main Dashboard ──────────────────────────────────────────────────────────
+// ── Main Dashboard ────────────────────────────────────────────────────────────
 
 interface DashboardTabProps {
   onNavigate: (t: TabId) => void;
@@ -483,7 +468,6 @@ export default function DashboardTab({ onNavigate, items, borrows, vehicles, vEx
 
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
 
-  // When a borrow gets returned via quick return, sync activeBorrow if it was that borrow
   useEffect(() => {
     if (!activeBorrow) return;
     const updated = borrows.find(r => r.id === activeBorrow.id);
@@ -550,14 +534,12 @@ export default function DashboardTab({ onNavigate, items, borrows, vehicles, vEx
     <>
       <div className={`space-y-6 w-full transition-all ${activeBorrow ? 'pr-[368px]' : ''}`}>
 
-        {/* Welcome */}
         <div className="bg-purple-700 rounded-xl p-6 text-white">
           <p className="text-purple-200 text-sm font-medium">Welcome back,</p>
           <h2 className="text-2xl font-bold mt-1">{name} 👋</h2>
           <p className="text-purple-200 text-sm mt-1">Here's what's happening with your inventory today.</p>
         </div>
 
-        {/* Stats */}
         <div className="grid grid-cols-5 gap-4">
           <StatCard label="Total Items" value={items.length} color="purple"
             icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>}/>
@@ -571,7 +553,6 @@ export default function DashboardTab({ onNavigate, items, borrows, vehicles, vEx
             icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>}/>
         </div>
 
-        {/* Overdue alert */}
         {settings.showOverdueAlerts && overdue.length > 0 && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-5">
             <div className="flex items-center gap-2 mb-3">
@@ -596,7 +577,6 @@ export default function DashboardTab({ onNavigate, items, borrows, vehicles, vEx
           </div>
         )}
 
-        {/* No due date alert */}
         {settings.showNoDueDateAlerts && noDueDate.length > 0 && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-5">
             <div className="flex items-center gap-2 mb-3">
@@ -616,7 +596,6 @@ export default function DashboardTab({ onNavigate, items, borrows, vehicles, vEx
           </div>
         )}
 
-        {/* Recent borrows */}
         <div className="card">
           <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-800">Recent Borrows</h3>
@@ -649,7 +628,6 @@ export default function DashboardTab({ onNavigate, items, borrows, vehicles, vEx
           </div>
         </div>
 
-        {/* Vehicle Section divider */}
         <div className="flex items-center gap-3 pt-2">
           <div className="h-px flex-1 bg-gray-200"/>
           <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest flex items-center gap-2">
@@ -661,7 +639,6 @@ export default function DashboardTab({ onNavigate, items, borrows, vehicles, vEx
           <div className="h-px flex-1 bg-gray-200"/>
         </div>
 
-        {/* Vehicle stat cards */}
         <div className="grid grid-cols-4 gap-4">
           <StatCard label="Total Vehicles" value={vehicles.length} color="teal"
             icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 17l-1.5-5.5L5 10h14l-1.5 1.5L16 17M3 17h18M5 10V8a2 2 0 012-2h10a2 2 0 012 2v2M9 17v1m6-1v1"/></svg>}/>
@@ -673,7 +650,6 @@ export default function DashboardTab({ onNavigate, items, borrows, vehicles, vEx
             icon={<svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>}/>
         </div>
 
-        {/* Vehicle breakdown + top expense types */}
         <div className="grid grid-cols-2 gap-4">
           <div className="card p-5">
             <div className="flex items-center justify-between mb-4">
@@ -685,7 +661,7 @@ export default function DashboardTab({ onNavigate, items, borrows, vehicles, vEx
             ) : (
               <div className="space-y-3">
                 {expenseByVehicle.map((v, idx) => {
-                  const pct = totalVehicleExpense > 0 ? (v.total / totalVehicleExpense) * 100 : 0;
+                  const pct  = totalVehicleExpense > 0 ? (v.total / totalVehicleExpense) * 100 : 0;
                   const bars = ['bg-teal-500','bg-purple-500','bg-blue-500','bg-orange-500','bg-pink-500'];
                   return (
                     <div key={v.name}>
@@ -716,7 +692,7 @@ export default function DashboardTab({ onNavigate, items, borrows, vehicles, vEx
             ) : (
               <div className="space-y-3">
                 {expenseByType.map(([type, amount], idx) => {
-                  const pct = totalVehicleExpense > 0 ? (amount / totalVehicleExpense) * 100 : 0;
+                  const pct  = totalVehicleExpense > 0 ? (amount / totalVehicleExpense) * 100 : 0;
                   const bars = ['bg-amber-500','bg-blue-500','bg-green-500','bg-red-500','bg-indigo-500'];
                   return (
                     <div key={type}>
@@ -735,7 +711,6 @@ export default function DashboardTab({ onNavigate, items, borrows, vehicles, vEx
           </div>
         </div>
 
-        {/* Recent vehicle expenses table */}
         <div className="card overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-800">Recent Vehicle Expenses</h3>
@@ -772,7 +747,6 @@ export default function DashboardTab({ onNavigate, items, borrows, vehicles, vEx
         </div>
       </div>
 
-      {/* Borrower Detail Drawer */}
       {activeBorrow && (
         <BorrowerDrawer
           borrow={activeBorrow}

@@ -2,7 +2,6 @@
 import { useState, useEffect } from 'react';
 import { BorrowRequest } from '@/lib/types/inventory';
 import { useSystemSettings } from '@/lib/hooks/useSystemSettings';
-import { exportBorrows } from '@/lib/utils/exportXLSX';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -18,8 +17,8 @@ const monthLabel = (ts: any) => ts
 const condBadge = (c: string | null) => {
   if (!c) return <span className="text-gray-400">—</span>;
   const m: Record<string, string> = {
-    Good: 'bg-green-100 text-green-700',
-    Fair: 'bg-yellow-100 text-yellow-700',
+    Good:    'bg-green-100 text-green-700',
+    Fair:    'bg-yellow-100 text-yellow-700',
     Damaged: 'bg-red-100 text-red-700',
   };
   return (
@@ -38,13 +37,81 @@ function Spinner() {
   );
 }
 
-// ─── Resolve photo URLs (supports both old single + new array) ────────────────
+// ─── Resolve damage photo URLs ────────────────────────────────────────────────
 
 function resolvePhotos(req: BorrowRequest): string[] {
   const multi = (req as any).damagePhotoUrls;
   if (Array.isArray(multi) && multi.length > 0) return multi;
   if (req.damagePhotoUrl) return [req.damagePhotoUrl];
   return [];
+}
+
+// ─── Verified Badge ───────────────────────────────────────────────────────────
+
+/**
+ * Shows how the return was verified:
+ * - Serial verified   → green badge (verifiedSerialNumbers has entries)
+ * - Checklist verified → blue badge (verificationChecklist === true)
+ * - Not verified      → gray dash  (quick return from dashboard)
+ */
+function VerifiedBadge({ req }: { req: BorrowRequest }) {
+  const hasSerial    = Array.isArray(req.verifiedSerialNumbers) && req.verifiedSerialNumbers.length > 0;
+  const hasChecklist = req.verificationChecklist === true;
+  const hasPhoto     = Array.isArray(req.verificationPhotoUrls) && req.verificationPhotoUrls.length > 0;
+
+  if (hasSerial) {
+    return (
+      <div className="flex flex-col gap-1">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700 whitespace-nowrap">
+          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
+          </svg>
+          Serial Verified
+        </span>
+        {hasPhoto && (
+          <span className="inline-flex items-center gap-1 text-xs text-gray-400">
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            {req.verificationPhotoUrls!.length} photo{req.verificationPhotoUrls!.length !== 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  if (hasChecklist) {
+    return (
+      <div className="flex flex-col gap-1">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 whitespace-nowrap">
+          <svg className="w-3.5 h-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
+          </svg>
+          Checklist Verified
+        </span>
+        {hasPhoto && (
+          <span className="inline-flex items-center gap-1 text-xs text-gray-400">
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            {req.verificationPhotoUrls!.length} photo{req.verificationPhotoUrls!.length !== 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+    );
+  }
+
+  // Quick return — no verification
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-400 whitespace-nowrap">
+      <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z"/>
+      </svg>
+      Quick Return
+    </span>
+  );
 }
 
 // ─── Damage Photo Lightbox ────────────────────────────────────────────────────
@@ -64,24 +131,18 @@ function DamageLightbox({ urls, startIndex, itemNames, onClose }: LightboxProps)
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-      if (e.key === 'ArrowLeft')  prev();
-      if (e.key === 'ArrowRight') next();
+      if (e.key === 'Escape')      onClose();
+      if (e.key === 'ArrowLeft')   prev();
+      if (e.key === 'ArrowRight')  next();
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [urls.length]);
 
   return (
-    <div
-      className="fixed inset-0 bg-black/85 flex items-center justify-center z-50 p-4"
-      onClick={onClose}
-    >
-      <div
-        className="relative w-full max-w-2xl flex flex-col"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
+    <div className="fixed inset-0 bg-black/85 flex items-center justify-center z-50 p-4"
+      onClick={onClose}>
+      <div className="relative w-full max-w-2xl flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="bg-red-600 text-white px-4 py-3 rounded-t-xl flex items-center gap-3">
           <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
             <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
@@ -91,41 +152,25 @@ function DamageLightbox({ urls, startIndex, itemNames, onClose }: LightboxProps)
             <p className="text-xs text-red-200 truncate">{itemNames}</p>
           </div>
           {urls.length > 1 && (
-            <span className="text-xs text-red-200 font-medium flex-shrink-0">
-              {idx + 1} / {urls.length}
-            </span>
+            <span className="text-xs text-red-200 font-medium flex-shrink-0">{idx + 1} / {urls.length}</span>
           )}
-          <button
-            onClick={onClose}
-            className="w-7 h-7 bg-red-700 hover:bg-red-800 rounded-lg flex items-center justify-center transition flex-shrink-0"
-          >
+          <button onClick={onClose}
+            className="w-7 h-7 bg-red-700 hover:bg-red-800 rounded-lg flex items-center justify-center transition flex-shrink-0">
             <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
             </svg>
           </button>
         </div>
-
-        {/* Image */}
         <div className="relative bg-gray-900 rounded-b-xl overflow-hidden">
-          <img
-            src={urls[idx]}
-            alt={`Damage photo ${idx + 1}`}
-            className="w-full max-h-[72vh] object-contain"
-          />
+          <img src={urls[idx]} alt={`Damage photo ${idx + 1}`} className="w-full max-h-[72vh] object-contain"/>
           {urls.length > 1 && (
             <>
-              <button
-                onClick={prev}
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/50 hover:bg-black/75 rounded-full flex items-center justify-center transition"
-              >
+              <button onClick={prev} className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/50 hover:bg-black/75 rounded-full flex items-center justify-center transition">
                 <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7"/>
                 </svg>
               </button>
-              <button
-                onClick={next}
-                className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/50 hover:bg-black/75 rounded-full flex items-center justify-center transition"
-              >
+              <button onClick={next} className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 bg-black/50 hover:bg-black/75 rounded-full flex items-center justify-center transition">
                 <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/>
                 </svg>
@@ -133,18 +178,11 @@ function DamageLightbox({ urls, startIndex, itemNames, onClose }: LightboxProps)
             </>
           )}
         </div>
-
-        {/* Dot indicators */}
         {urls.length > 1 && (
           <div className="flex items-center gap-1.5 justify-center mt-3">
             {urls.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => setIdx(i)}
-                className={`rounded-full transition-all duration-200 ${
-                  i === idx ? 'w-4 h-2.5 bg-red-400' : 'w-2.5 h-2.5 bg-white/40 hover:bg-white/70'
-                }`}
-              />
+              <button key={i} onClick={() => setIdx(i)}
+                className={`rounded-full transition-all duration-200 ${i === idx ? 'w-4 h-2.5 bg-red-400' : 'w-2.5 h-2.5 bg-white/40 hover:bg-white/70'}`}/>
             ))}
           </div>
         )}
@@ -158,7 +196,7 @@ function DamageLightbox({ urls, startIndex, itemNames, onClose }: LightboxProps)
 function DamagePhotosCell({ req }: { req: BorrowRequest }) {
   const photos    = resolvePhotos(req);
   const itemNames = req.items.map(i => i.itemName).join(', ');
-  const [idx, setIdx]           = useState(0);
+  const [idx, setIdx]               = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
 
   if (photos.length === 0) return <span className="text-gray-300 text-xs">—</span>;
@@ -176,11 +214,9 @@ function DamagePhotosCell({ req }: { req: BorrowRequest }) {
     <>
       <div className="flex flex-col items-start gap-1.5" style={{ minWidth: 80 }}>
         <div className="relative group w-16 h-16 flex-shrink-0">
-          <button
-            onClick={() => setLightboxOpen(true)}
+          <button onClick={() => setLightboxOpen(true)}
             className="w-full h-full block rounded-xl overflow-hidden ring-2 ring-red-200 hover:ring-red-400 transition focus:outline-none"
-            title="Click to view full size"
-          >
+            title="Click to view full size">
             <img src={photos[idx]} alt={`Damage ${idx + 1}`} className="w-full h-full object-cover"/>
           </button>
           <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center pointer-events-none z-10">
@@ -190,11 +226,17 @@ function DamagePhotosCell({ req }: { req: BorrowRequest }) {
           </span>
           {photos.length > 1 && (
             <>
-              <button onClick={prev} className="absolute left-0.5 top-1/2 -translate-y-1/2 w-5 h-5 bg-black/60 hover:bg-black/80 rounded-full flex items-center justify-center transition opacity-0 group-hover:opacity-100 z-10">
-                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7"/></svg>
+              <button onClick={prev}
+                className="absolute left-0.5 top-1/2 -translate-y-1/2 w-5 h-5 bg-black/60 hover:bg-black/80 rounded-full flex items-center justify-center transition opacity-0 group-hover:opacity-100 z-10">
+                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M15 19l-7-7 7-7"/>
+                </svg>
               </button>
-              <button onClick={next} className="absolute right-0.5 top-1/2 -translate-y-1/2 w-5 h-5 bg-black/60 hover:bg-black/80 rounded-full flex items-center justify-center transition opacity-0 group-hover:opacity-100 z-10">
-                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7"/></svg>
+              <button onClick={next}
+                className="absolute right-0.5 top-1/2 -translate-y-1/2 w-5 h-5 bg-black/60 hover:bg-black/80 rounded-full flex items-center justify-center transition opacity-0 group-hover:opacity-100 z-10">
+                <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7"/>
+                </svg>
               </button>
             </>
           )}
@@ -202,16 +244,20 @@ function DamagePhotosCell({ req }: { req: BorrowRequest }) {
         {photos.length > 1 && (
           <div className="flex items-center gap-1 justify-center w-16">
             {photos.map((_, i) => (
-              <button key={i} onClick={e => { e.stopPropagation(); setIdx(i); }} title={`Photo ${i + 1}`}
-                className={`rounded-full transition-all duration-200 flex-shrink-0 ${i === idx ? 'w-3 h-2 bg-red-500' : 'w-2 h-2 bg-gray-300 hover:bg-red-300'}`}
-              />
+              <button key={i} onClick={e => { e.stopPropagation(); setIdx(i); }}
+                className={`rounded-full transition-all duration-200 flex-shrink-0
+                  ${i === idx ? 'w-3 h-2 bg-red-500' : 'w-2 h-2 bg-gray-300 hover:bg-red-300'}`}/>
             ))}
           </div>
         )}
-        {photos.length > 1 && <span className="text-xs text-gray-400 leading-none">{idx + 1}/{photos.length} photos</span>}
+        {photos.length > 1 && (
+          <span className="text-xs text-gray-400 leading-none">{idx + 1}/{photos.length} photos</span>
+        )}
       </div>
       {lightboxOpen && (
-        <DamageLightbox urls={photos} startIndex={idx} itemNames={itemNames} onClose={() => setLightboxOpen(false)}/>
+        <DamageLightbox
+          urls={photos} startIndex={idx} itemNames={itemNames}
+          onClose={() => setLightboxOpen(false)}/>
       )}
     </>
   );
@@ -227,8 +273,10 @@ interface ReturnedTabProps {
 export default function ReturnedTab({ requests, loading }: ReturnedTabProps) {
   const settings = useSystemSettings();
   const PER_PAGE = settings.itemsPerPage;
+
   const [monthFilter, setMonth] = useState('All');
   const [condFilter, setCond]   = useState<'All' | 'Good' | 'Fair' | 'Damaged'>('All');
+  const [verifyFilter, setVerifyFilter] = useState<'All' | 'serial' | 'checklist' | 'quick'>('All'); // ← NEW
   const [page, setPage]         = useState(1);
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
 
@@ -237,26 +285,78 @@ export default function ReturnedTab({ requests, loading }: ReturnedTabProps) {
   ))];
 
   const filtered = requests.filter(r => {
-    const matchMonth = monthFilter === 'All' || (r.returnedAt && monthLabel(r.returnedAt) === monthFilter);
-    const matchCond  = condFilter === 'All' || r.returnCondition === condFilter;
-    return matchMonth && matchCond;
+    const matchMonth = monthFilter === 'All' ||
+      (r.returnedAt && monthLabel(r.returnedAt) === monthFilter);
+    const matchCond = condFilter === 'All' || r.returnCondition === condFilter;
+
+    // ── Verification filter ── NEW ──────────────────────────────────────────
+    let matchVerify = true;
+    if (verifyFilter === 'serial') {
+      matchVerify = Array.isArray(r.verifiedSerialNumbers) && r.verifiedSerialNumbers.length > 0;
+    } else if (verifyFilter === 'checklist') {
+      matchVerify = r.verificationChecklist === true;
+    } else if (verifyFilter === 'quick') {
+      matchVerify = !r.verifiedSerialNumbers?.length && !r.verificationChecklist;
+    }
+
+    return matchMonth && matchCond && matchVerify;
   });
 
-  const hasFilters = monthFilter !== 'All' || condFilter !== 'All';
+  const hasFilters = monthFilter !== 'All' || condFilter !== 'All' || verifyFilter !== 'All';
 
   const totalPages = Math.ceil(filtered.length / PER_PAGE);
   const paginated  = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
   const damagedCount = requests.filter(r => r.returnCondition === 'Damaged').length;
 
-  // ── Dual XLSX Export ───────────────────────────────────────────────────────
+  // ── CSV export ────────────────────────────────────────────────────────────
+
+  function buildCSVRows(data: BorrowRequest[]) {
+    return data.map(r => {
+      const hasSerial    = Array.isArray(r.verifiedSerialNumbers) && r.verifiedSerialNumbers.length > 0;
+      const hasChecklist = r.verificationChecklist === true;
+      const verifyType   = hasSerial ? 'Serial Verified' : hasChecklist ? 'Checklist Verified' : 'Quick Return';
+      return [
+        r.id, r.borrowerName, r.borrowerDepartment, r.borrowerContact,
+        r.items.map(i => i.itemName).join('|'),
+        r.items.map(i => i.inventoryNumber).join('|'),
+        r.items.map(i => i.serialNumber).join('|'),
+        r.borrowDate, r.returnDate || 'N/A', fmtDate(r.returnedAt),
+        r.returnCondition || '', r.returnNotes || '',
+        resolvePhotos(r).length,
+        verifyType,                                                    // ← NEW column
+        (r.verifiedSerialNumbers || []).join('|'),                     // ← NEW column
+        (r.verificationPhotoUrls || []).length,                       // ← NEW column
+      ];
+    });
+  }
+
+  function downloadCSV(rows: any[][], filename: string) {
+    const headers = [
+      'Ref ID', 'Borrower', 'Department', 'Contact', 'Items',
+      'Inventory No.', 'Serial No.', 'Borrow Date', 'Due Date',
+      'Returned At', 'Condition', 'Notes', 'Photo Count',
+      'Verification Type',        // ← NEW
+      'Verified Serial Numbers',  // ← NEW
+      'Verify Photo Count',       // ← NEW
+    ];
+    const csv = [headers, ...rows]
+      .map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = filename;
+    a.click();
+  }
 
   function exportFiltered() {
-    exportBorrows(filtered);
+    const today = new Date().toISOString().split('T')[0];
+    downloadCSV(buildCSVRows(filtered), `returned-filtered-${today}.csv`);
   }
 
   function exportAll() {
-    exportBorrows(requests);
+    const today = new Date().toISOString().split('T')[0];
+    downloadCSV(buildCSVRows(requests), `returned-ALL-${today}.csv`);
   }
 
   function toggleNotes(id: string) {
@@ -283,13 +383,13 @@ export default function ReturnedTab({ requests, loading }: ReturnedTabProps) {
               <p className="text-sm font-semibold text-red-800">
                 {damagedCount} item{damagedCount !== 1 ? 's' : ''} returned damaged
               </p>
-              <p className="text-xs text-red-600 mt-0.5">These items are marked Unavailable in inventory until reviewed.</p>
+              <p className="text-xs text-red-600 mt-0.5">
+                These items are marked Unavailable in inventory until reviewed.
+              </p>
             </div>
           </div>
-          <button
-            onClick={() => { setCond('Damaged'); setPage(1); }}
-            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg transition flex-shrink-0"
-          >
+          <button onClick={() => { setCond('Damaged'); setPage(1); }}
+            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-semibold rounded-lg transition flex-shrink-0">
             Show Damaged Only
           </button>
         </div>
@@ -307,25 +407,35 @@ export default function ReturnedTab({ requests, loading }: ReturnedTabProps) {
               <span className="ml-1 text-xs text-gray-400 font-normal">of {requests.length} total</span>
             )}
           </h3>
-          <select
-            value={condFilter}
+
+          {/* Condition filter */}
+          <select value={condFilter}
             onChange={e => { setCond(e.target.value as any); setPage(1); }}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-          >
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500">
             <option value="All">All Conditions</option>
             <option value="Good">Good</option>
             <option value="Fair">Fair</option>
             <option value="Damaged">Damaged</option>
           </select>
-          <select
-            value={monthFilter}
+
+          {/* Month filter */}
+          <select value={monthFilter}
             onChange={e => { setMonth(e.target.value); setPage(1); }}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-          >
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500">
             {months.map(m => <option key={m} value={m}>{m === 'All' ? 'All Months' : m}</option>)}
           </select>
 
-          {/* Phase 4.1: Show both export buttons when filters are active */}
+          {/* ── Verification filter ── NEW ── */}
+          <select value={verifyFilter}
+            onChange={e => { setVerifyFilter(e.target.value as any); setPage(1); }}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500">
+            <option value="All">All Verifications</option>
+            <option value="serial">Serial Verified</option>
+            <option value="checklist">Checklist Verified</option>
+            <option value="quick">Quick Return</option>
+          </select>
+
+          {/* Export buttons */}
           {hasFilters ? (
             <div className="flex gap-2">
               <button onClick={exportFiltered} className="btn-primary">
@@ -346,7 +456,7 @@ export default function ReturnedTab({ requests, loading }: ReturnedTabProps) {
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
               </svg>
-              Export XLSX
+              Export CSV
             </button>
           )}
         </div>
@@ -355,30 +465,29 @@ export default function ReturnedTab({ requests, loading }: ReturnedTabProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
-                {['Items', 'Borrower', 'Department', 'Contact', 'Due Date', 'Returned At', 'Condition', 'Notes', 'Damage Photos'].map(h => (
+                {['Items', 'Borrower', 'Department', 'Contact', 'Due Date',
+                  'Returned At', 'Condition', 'Verified', 'Notes', 'Damage Photos'].map(h => ( // ← 'Verified' is new
                   <th key={h} className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide px-5 py-3">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={9} className="py-12 text-center">
+                <tr><td colSpan={10} className="py-12 text-center">
                   <div className="flex items-center justify-center gap-2 text-gray-400">
                     <Spinner/><span className="text-sm">Loading...</span>
                   </div>
                 </td></tr>
               ) : paginated.length === 0 ? (
-                <tr><td colSpan={9} className="text-center text-gray-500 py-12 text-sm">
+                <tr><td colSpan={10} className="text-center text-gray-500 py-12 text-sm">
                   No returned items found.
                 </td></tr>
               ) : paginated.map(req => {
-                const expanded = expandedNotes.has(req.id);
+                const expanded  = expandedNotes.has(req.id);
                 const isDamaged = req.returnCondition === 'Damaged';
                 return (
-                  <tr
-                    key={req.id}
-                    className={`border-b border-gray-50 hover:bg-gray-50 transition ${isDamaged ? 'bg-red-50/30' : ''}`}
-                  >
+                  <tr key={req.id}
+                    className={`border-b border-gray-50 hover:bg-gray-50 transition ${isDamaged ? 'bg-red-50/30' : ''}`}>
                     <td className="px-5 py-4 font-medium text-gray-800">
                       {req.items.map(i => i.itemName).join(', ')}
                     </td>
@@ -388,15 +497,17 @@ export default function ReturnedTab({ requests, loading }: ReturnedTabProps) {
                     <td className="px-5 py-4 text-gray-600">{req.returnDate || '—'}</td>
                     <td className="px-5 py-4 text-gray-600">{fmtDate(req.returnedAt)}</td>
                     <td className="px-5 py-4">{condBadge(req.returnCondition)}</td>
+                    {/* ── Verified column ── NEW ── */}
+                    <td className="px-5 py-4">
+                      <VerifiedBadge req={req}/>
+                    </td>
                     <td className="px-5 py-4 text-gray-600 max-w-[180px]">
                       {req.returnNotes ? (
                         <div>
                           <p className={`text-sm ${!expanded ? 'truncate' : ''}`}>{req.returnNotes}</p>
                           {req.returnNotes.length > 60 && (
-                            <button
-                              onClick={() => toggleNotes(req.id)}
-                              className="text-xs text-purple-600 hover:underline mt-0.5"
-                            >
+                            <button onClick={() => toggleNotes(req.id)}
+                              className="text-xs text-purple-600 hover:underline mt-0.5">
                               {expanded ? 'Show less' : 'Show more'}
                             </button>
                           )}
@@ -420,10 +531,9 @@ export default function ReturnedTab({ requests, loading }: ReturnedTabProps) {
             </p>
             <div className="flex gap-1">
               {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-                <button
-                  key={p} onClick={() => setPage(p)}
-                  className={`w-8 h-8 rounded-lg text-xs font-medium transition ${p === page ? 'bg-purple-700 text-white' : 'text-gray-600 hover:bg-gray-100'}`}
-                >
+                <button key={p} onClick={() => setPage(p)}
+                  className={`w-8 h-8 rounded-lg text-xs font-medium transition
+                    ${p === page ? 'bg-purple-700 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
                   {p}
                 </button>
               ))}

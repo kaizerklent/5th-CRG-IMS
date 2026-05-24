@@ -9,7 +9,7 @@ export interface InventoryItem {
   isUnique: boolean;
   quantity: number;
   condition: string;
-  status: 'Available' | 'Unavailable'| 'Returned to Vendor';
+  status: 'Available' | 'Unavailable' | 'Returned to Vendor'; // ← extended
   inventoryNumber: string;
   serialNumber: string;
   officeOwner: string;
@@ -17,7 +17,7 @@ export interface InventoryItem {
   inventoryDate: string;
   imageUrl: string | null;        // keep — backward compat for old single-image records
   imageUrls?: string[];           // new — multi-image support (first image = primary thumbnail)
-  value: number | null;
+  value: number | null;           // ← NEW: peso value, used for vendor return threshold check
   notes: string;
   borrowedBy: string | null;
   borrowRequestId: string | null;
@@ -51,13 +51,16 @@ export interface BorrowRequest {
   returnNotes: string | null;
   damagePhotoUrl: string | null;
   damagePhotoUrls?: string[];
+  verifiedSerialNumbers?: string[];
+  verificationChecklist?: boolean;
+  verificationPhotoUrls?: string[];
 }
 
 // ─── Admin History ────────────────────────────────────────────────────────────
 
 export interface AdminHistory {
   id: string;
-  action: 'add' | 'update' | 'delete' | 'vendorReturn';
+  action: 'add' | 'update' | 'delete' | 'vendorReturn'; // ← extended
   itemId: string;
   itemName: string;
   adminName: string;
@@ -102,7 +105,7 @@ export interface CustomCategory {
 }
 
 // ─── Vendor Returns ───────────────────────────────────────────────────────────
- 
+
 export interface VendorReturn {
   id: string;
   itemId: string;
@@ -121,7 +124,6 @@ export interface VendorReturn {
   adminName: string;              // who processed this return
   createdAt: Timestamp | null;
 }
- 
 
 // ─── Tab IDs ──────────────────────────────────────────────────────────────────
 
@@ -131,7 +133,7 @@ export type TabId =
   | 'borrowed'
   | 'returned'
   | 'inventory'
-  | 'vendor-return'
   | 'history'
   | 'vehicle'
+  | 'vendor-return'   // ← NEW
   | 'profile';
