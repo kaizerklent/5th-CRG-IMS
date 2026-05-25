@@ -452,9 +452,8 @@ export async function submitVendorReturn(
     createdAt:       serverTimestamp(),
   });
 
-  batch.update(doc(db, 'inventory', item.id), {
-    status: 'Returned to Vendor',
-  });
+  // Delete the item from inventory — record is preserved in vendorReturns + adminHistory
+  batch.delete(doc(db, 'inventory', item.id));
 
   await batch.commit();
 
@@ -463,7 +462,7 @@ export async function submitVendorReturn(
     itemId:   item.id,
     itemName: item.name,
     adminName,
-    details:  `Vendor Return: ${item.name}${item.inventoryNumber ? ` (${item.inventoryNumber})` : ''} returned to ${data.vendorName}. Reason: ${data.reason}`,
+    details:  `Vendor Return: ${item.name}${item.inventoryNumber ? ` (${item.inventoryNumber})` : ''} returned to ${data.vendorName} and removed from inventory. Reason: ${data.reason}`,
   });
 
   return returnRef.id;
