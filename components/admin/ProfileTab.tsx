@@ -2,7 +2,7 @@
 import * as XLSX from 'xlsx';
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/firebase/AuthContext';
-import { updateDisplayName, changePassword } from '@/lib/firebase/auth';
+import { updateDisplayName, changePassword, sendPasswordReset } from '@/lib/firebase/auth';
 import { subscribeInventory, subscribeAllBorrows, subscribeCategories, addCategory, deleteCategory } from '@/lib/firebase/firestore';
 import { InventoryItem, BorrowRequest, AdminHistory, CustomCategory } from '@/lib/types/inventory';
 import {
@@ -93,6 +93,9 @@ function InventoryCategoriesSection() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
 
+  // ── NEW: confirmation state ──
+  const [confirmCat, setConfirmCat] = useState<CustomCategory | null>(null);
+
   useEffect(() => {
     const u1 = subscribeCategories(data => { setCategories(data); setLoadingCats(false); });
     const u2 = subscribeInventory(data => { setInventoryItems(data); setLoadingItems(false); });
@@ -103,7 +106,6 @@ function InventoryCategoriesSection() {
     return inventoryItems.filter(i => i.category === catName).length;
   }
 
-  // Sort: alphabetical, but "Other" always last
   const sortedCategories = [...categories].sort((a, b) => {
     if (a.name === 'Other') return 1;
     if (b.name === 'Other') return -1;
@@ -125,7 +127,8 @@ function InventoryCategoriesSection() {
     finally { setAdding(false); }
   }
 
-  async function handleDelete(cat: CustomCategory) {
+  // ── requestDelete: show warning modal or block with error ──
+  function requestDelete(cat: CustomCategory) {
     if (cat.name === 'Other') {
       setDeleteErr('"Other" is a protected category and cannot be deleted.');
       setTimeout(() => setDeleteErr(null), 4000);
@@ -137,8 +140,16 @@ function InventoryCategoriesSection() {
       setTimeout(() => setDeleteErr(null), 5000);
       return;
     }
-    setDeletingId(cat.id); setDeleteErr(null);
-    try { await deleteCategory(cat.id, cat.name, adminName); }
+    // Safe to delete — show confirmation
+    setConfirmCat(cat);
+    setDeleteErr(null);
+  }
+
+  async function confirmDelete() {
+    if (!confirmCat) return;
+    setDeletingId(confirmCat.id);
+    setConfirmCat(null);
+    try { await deleteCategory(confirmCat.id, confirmCat.name, adminName); }
     catch { setDeleteErr('Failed to delete category. Please try again.'); }
     finally { setDeletingId(null); }
   }
@@ -147,6 +158,39 @@ function InventoryCategoriesSection() {
 
   return (
     <div className="space-y-4 pt-4">
+
+      {/* ── Delete Confirmation Modal ── */}
+      {confirmCat && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4"
+          role="dialog" aria-modal="true" aria-label="Delete category confirmation">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center">
+            <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+              <svg className="w-6 h-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+              </svg>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-800 mb-1">Delete Category?</h3>
+            <p className="text-sm text-gray-600 mb-1 font-medium">"{confirmCat.name}"</p>
+            <p className="text-sm text-gray-500 mb-6">
+              This category has no items assigned to it. Once deleted, it will no longer appear in the
+              Inventory or Borrow tabs. This cannot be undone.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmCat(null)}
+                className="btn-secondary flex-1">
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="btn-danger flex-1">
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add field */}
       <div>
@@ -204,13 +248,12 @@ function InventoryCategoriesSection() {
           </div>
         ) : (
           <div className="border border-gray-200 rounded-xl overflow-hidden">
-            {/* Scrollable list — max 320px (~8 rows) then scrolls */}
             <div className="divide-y divide-gray-100 max-h-80 overflow-y-auto">
               {sortedCategories.map((cat, index) => {
-                const count     = usageCount(cat.name);
-                const isOther   = cat.name === 'Other';
+                const count      = usageCount(cat.name);
+                const isOther    = cat.name === 'Other';
                 const isDeleting = deletingId === cat.id;
-                const inUse     = count > 0;
+                const inUse      = count > 0;
 
                 return (
                   <div
@@ -218,12 +261,10 @@ function InventoryCategoriesSection() {
                     className={`flex items-center gap-3 px-4 py-3 transition-colors
                       ${isOther ? 'bg-gray-50/60' : 'hover:bg-gray-50'}`}
                   >
-                    {/* Row number */}
                     <span className="text-xs text-gray-300 font-mono w-5 flex-shrink-0 text-right select-none">
                       {index + 1}
                     </span>
 
-                    {/* Category name */}
                     <p className={`flex-1 text-sm font-medium truncate ${isOther ? 'text-gray-400' : 'text-gray-800'}`}>
                       {cat.name}
                       {isOther && (
@@ -231,7 +272,6 @@ function InventoryCategoriesSection() {
                       )}
                     </p>
 
-                    {/* Usage badge */}
                     <span className={`flex-shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full
                       ${count > 0
                         ? 'bg-purple-100 text-purple-700'
@@ -239,7 +279,6 @@ function InventoryCategoriesSection() {
                       {count} {count === 1 ? 'item' : 'items'}
                     </span>
 
-                    {/* Delete button */}
                     {isOther ? (
                       <div className="w-7 h-7 flex-shrink-0" title="Protected — cannot be deleted">
                         <svg className="w-4 h-4 text-gray-300 mx-auto mt-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -250,7 +289,7 @@ function InventoryCategoriesSection() {
                     ) : (
                       <button
                         type="button"
-                        onClick={() => handleDelete(cat)}
+                        onClick={() => requestDelete(cat)}
                         disabled={isDeleting || inUse}
                         title={
                           inUse
@@ -279,7 +318,6 @@ function InventoryCategoriesSection() {
               })}
             </div>
 
-            {/* Footer hint */}
             <div className="px-4 py-2.5 bg-gray-50 border-t border-gray-100">
               <p className="text-xs text-gray-400">
                 Categories in use (purple badge) cannot be deleted — reassign inventory items first.
@@ -292,7 +330,6 @@ function InventoryCategoriesSection() {
     </div>
   );
 }
-
 // ─── System Settings section ──────────────────────────────────────────────────
 
 function SystemSettingsSection() {
@@ -769,7 +806,26 @@ function DataExportSection() {
 // ─── Account Security section ─────────────────────────────────────────────────
 
 function AccountSecuritySection({ user }: { user: any }) {
-  const [sessionStart] = useState(() => new Date());
+  const [sessionStart]           = useState(() => new Date());
+  const [tick, setTick]          = useState(0);
+  const [verifying, setVerifying] = useState(false);
+  const [verifyMsg, setVerifyMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [reloading, setReloading] = useState(false);
+  const [reloadMsg, setReloadMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isVerified, setIsVerified] = useState<boolean>(user?.emailVerified ?? false);
+
+  // Live session timer — ticks every 30s
+  useEffect(() => {
+    const t = setInterval(() => setTick(p => p + 1), 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  const sessionDuration = () => {
+    const diff = Math.floor((new Date().getTime() - sessionStart.getTime()) / 1000);
+    if (diff < 60)   return `${diff}s`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ${diff % 60}s`;
+    return `${Math.floor(diff / 3600)}h ${Math.floor((diff % 3600) / 60)}m`;
+  };
 
   const lastSignIn = user?.metadata?.lastSignInTime
     ? new Date(user.metadata.lastSignInTime).toLocaleString('en-PH', {
@@ -784,21 +840,60 @@ function AccountSecuritySection({ user }: { user: any }) {
       })
     : '—';
 
-  const sessionDuration = () => {
-    const diff = Math.floor((new Date().getTime() - sessionStart.getTime()) / 1000);
-    if (diff < 60) return `${diff}s`;
-    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
-    return `${Math.floor(diff / 3600)}h ${Math.floor((diff % 3600) / 60)}m`;
-  };
+  const providers     = user?.providerData?.map((p: any) => p.providerId) || [];
+  const providerLabel = providers.includes('password')
+    ? 'Email / Password'
+    : providers.join(', ') || 'Unknown';
 
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => setTick(p => p + 1), 30000);
-    return () => clearInterval(t);
-  }, []);
+  // ── Send verification email ───────────────────────────────────────────────
 
-  const providers = user?.providerData?.map((p: any) => p.providerId) || [];
-  const providerLabel = providers.includes('password') ? 'Email / Password' : providers.join(', ') || 'Unknown';
+  async function handleSendVerification() {
+    setVerifying(true); setVerifyMsg(null);
+    try {
+      const { sendEmailVerification } = await import('firebase/auth');
+      const { auth } = await import('@/lib/firebase/firebaseConfig');
+      if (!auth.currentUser) throw new Error('No user');
+      await sendEmailVerification(auth.currentUser, {
+        url: window.location.origin, // redirect back after verification
+      });
+      setVerifyMsg({
+        type: 'success',
+        text: `Verification email sent to ${user.email}. Check your inbox (and spam folder).`,
+      });
+    } catch (err: any) {
+      const c = err?.code || '';
+      if (c === 'auth/too-many-requests') {
+        setVerifyMsg({ type: 'error', text: 'Too many requests. Please wait a few minutes before trying again.' });
+      } else {
+        setVerifyMsg({ type: 'error', text: 'Failed to send verification email. Please try again.' });
+      }
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  // ── Reload user to check latest verification status ───────────────────────
+
+  async function handleReloadUser() {
+    setReloading(true); setReloadMsg(null);
+    try {
+      const { auth } = await import('@/lib/firebase/firebaseConfig');
+      if (!auth.currentUser) throw new Error('No user');
+      await auth.currentUser.reload();
+      const freshVerified = auth.currentUser.emailVerified;
+      setIsVerified(freshVerified);
+      if (freshVerified) {
+        setVerifyMsg(null);
+        setReloadMsg({ type: 'success', text: 'Email verified successfully! Your account is now fully verified.' });
+      } else {
+        setReloadMsg({ type: 'error', text: 'Email not yet verified. Please click the link in the email we sent you.' });
+      }
+    } catch {
+      setReloadMsg({ type: 'error', text: 'Failed to refresh status. Please try again.' });
+    } finally {
+      setReloading(false);
+    }
+  }
 
   const infoRows = [
     { label: 'Account Created', value: accountCreated },
@@ -806,22 +901,151 @@ function AccountSecuritySection({ user }: { user: any }) {
     { label: 'Current Session', value: sessionDuration() },
     { label: 'Auth Provider',   value: providerLabel },
     { label: 'User ID',         value: user?.uid || '—', mono: true },
-    { label: 'Email Verified',  value: user?.emailVerified ? '✓ Verified' : '✗ Not verified',
-      color: user?.emailVerified ? 'text-green-600' : 'text-red-600' },
   ];
 
   return (
-    <div className="pt-4 space-y-4">
+    <div className="pt-4 space-y-5">
+
+      {/* ── Email Verification status card ── */}
+      <div className={`rounded-xl border px-4 py-4 ${
+        isVerified
+          ? 'bg-green-50 border-green-200'
+          : 'bg-yellow-50 border-yellow-200'
+      }`}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
+              isVerified ? 'bg-green-100' : 'bg-yellow-100'
+            }`}>
+              {isVerified ? (
+                <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
+                </svg>
+              ) : (
+                <svg className="w-5 h-5 text-yellow-600" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd"/>
+                </svg>
+              )}
+            </div>
+            <div>
+              <p className={`text-sm font-semibold ${isVerified ? 'text-green-800' : 'text-yellow-800'}`}>
+                {isVerified ? 'Email Verified' : 'Email Not Verified'}
+              </p>
+              <p className={`text-xs mt-0.5 ${isVerified ? 'text-green-600' : 'text-yellow-700'}`}>
+                {isVerified
+                  ? `${user?.email} has been verified.`
+                  : `${user?.email} — verify your email to secure your account.`
+                }
+              </p>
+            </div>
+          </div>
+
+          {/* Action buttons on the right */}
+          {!isVerified && (
+            <div className="flex flex-col gap-2 flex-shrink-0">
+              <button
+                onClick={handleSendVerification}
+                disabled={verifying}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-300 disabled:text-gray-500 text-white text-xs font-semibold rounded-lg transition whitespace-nowrap"
+              >
+                {verifying ? (
+                  <><Spinner sm/> Sending...</>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                    </svg>
+                    Send Verification Email
+                  </>
+                )}
+              </button>
+              <button
+                onClick={handleReloadUser}
+                disabled={reloading}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-yellow-400 bg-white hover:bg-yellow-50 disabled:opacity-50 text-yellow-800 text-xs font-semibold rounded-lg transition whitespace-nowrap"
+              >
+                {reloading ? (
+                  <><Spinner sm/> Checking...</>
+                ) : (
+                  <>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                    </svg>
+                    I've Verified — Check Status
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* Reload button when already verified */}
+          {isVerified && (
+            <button
+              onClick={handleReloadUser}
+              disabled={reloading}
+              title="Refresh verification status"
+              className="p-1.5 rounded-lg text-green-600 hover:bg-green-100 transition disabled:opacity-50 flex-shrink-0"
+            >
+              {reloading
+                ? <Spinner sm/>
+                : (
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                  </svg>
+                )
+              }
+            </button>
+          )}
+        </div>
+
+        {/* Messages below the card content */}
+        {verifyMsg && (
+          <div className="mt-3">
+            <Alert type={verifyMsg.type} msg={verifyMsg.text}/>
+          </div>
+        )}
+        {reloadMsg && (
+          <div className="mt-3">
+            <Alert type={reloadMsg.type} msg={reloadMsg.text}/>
+          </div>
+        )}
+
+        {/* Step-by-step guide when unverified */}
+        {!isVerified && !verifyMsg && (
+          <div className="mt-3 pt-3 border-t border-yellow-200">
+            <p className="text-xs font-semibold text-yellow-800 mb-2">How to verify your email:</p>
+            <ol className="space-y-1 text-xs text-yellow-700 list-none">
+              {[
+                'Click "Send Verification Email" above.',
+                `Open your inbox for ${user?.email}.`,
+                'Click the verification link in the email.',
+                'Return here and click "I\'ve Verified — Check Status".',
+              ].map((step, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className="w-4 h-4 rounded-full bg-yellow-200 text-yellow-800 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
+                    {i + 1}
+                  </span>
+                  {step}
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+      </div>
+
+      {/* ── Account info grid ── */}
       <div className="grid grid-cols-2 gap-3">
         {infoRows.map(row => (
           <div key={row.label} className="bg-gray-50 rounded-lg px-3 py-2.5">
             <p className="text-xs text-gray-500 mb-0.5">{row.label}</p>
-            <p className={`text-sm font-medium break-all ${row.color || 'text-gray-800'} ${row.mono ? 'font-mono text-xs' : ''}`}>
+            <p className={`text-sm font-medium break-all text-gray-800 ${row.mono ? 'font-mono text-xs' : ''}`}>
               {row.value}
             </p>
           </div>
         ))}
       </div>
+
+      {/* ── Security recommendations ── */}
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
         <p className="text-xs font-semibold text-amber-800 mb-2 flex items-center gap-1.5">
           <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
@@ -834,13 +1058,12 @@ function AccountSecuritySection({ user }: { user: any }) {
           <li>• Never share your admin credentials with others</li>
           <li>• Log out when leaving the system unattended</li>
           <li>• Change your password every 90 days</li>
+          <li>• Verify your email to enable account recovery</li>
         </ul>
       </div>
     </div>
   );
 }
-
-// ─── Profile & Password ───────────────────────────────────────────────────────
 
 function ProfileSection({ user }: { user: any }) {
   const displayName = user?.displayName || '';
@@ -856,6 +1079,11 @@ function ProfileSection({ user }: { user: any }) {
   const [confPw, setConfPw] = useState('');
   const [savingPw, setSavingPw] = useState(false);
   const [pwMsg, setPwMsg]   = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // ── NEW: forgot password ──
+  const [sendingReset, setSendingReset] = useState(false);
+  const [resetMsg, setResetMsg]         = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   async function handleSaveName(e: React.FormEvent) {
     e.preventDefault();
@@ -892,8 +1120,75 @@ function ProfileSection({ user }: { user: any }) {
     } finally { setSavingPw(false); }
   }
 
+  // ── NEW: send password reset email ──
+  async function handleForgotPassword() {
+    setSendingReset(true); setResetMsg(null); setShowResetConfirm(false);
+    try {
+      await sendPasswordReset(email);
+      setResetMsg({
+        type: 'success',
+        text: `Password reset email sent to ${email}. Check your inbox and follow the link to set a new password.`,
+      });
+    } catch (err: any) {
+      const c = err?.code || '';
+      if (c === 'auth/too-many-requests') {
+        setResetMsg({ type: 'error', text: 'Too many requests. Please wait a few minutes before trying again.' });
+      } else {
+        setResetMsg({ type: 'error', text: 'Failed to send reset email. Please try again.' });
+      }
+    } finally { setSendingReset(false); }
+  }
+
   return (
     <>
+      {/* ── Reset confirmation modal ── */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4"
+          role="dialog" aria-modal="true" aria-label="Send password reset confirmation">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-purple-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-gray-800">Reset Password?</h3>
+                <p className="text-xs text-gray-500 mt-0.5">A reset link will be emailed to you</p>
+              </div>
+            </div>
+
+            <div className="bg-gray-50 rounded-xl px-4 py-3 mb-4">
+              <p className="text-xs text-gray-500 mb-0.5">Reset link will be sent to</p>
+              <p className="text-sm font-medium text-gray-800">{email}</p>
+            </div>
+
+            <p className="text-sm text-gray-600 mb-5">
+              You will receive an email with a link to set a new password.
+              Your current password stays active until you complete the reset.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowResetConfirm(false)}
+                className="btn-secondary flex-1">
+                Cancel
+              </button>
+              <button
+                onClick={handleForgotPassword}
+                disabled={sendingReset}
+                className="btn-primary flex-1 py-2.5">
+                {sendingReset
+                  ? <><Spinner/> Sending...</>
+                  : 'Send Reset Email'
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center gap-4 mb-6 pb-6 border-b border-gray-100">
         <div className="w-16 h-16 rounded-full bg-purple-700 flex items-center justify-center flex-shrink-0 shadow">
           <span className="text-white text-2xl font-bold">{avatar}</span>
@@ -927,7 +1222,21 @@ function ProfileSection({ user }: { user: any }) {
       </form>
 
       <form onSubmit={handleChangePw} className="space-y-4 pt-6 border-t border-gray-100">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Change Password</p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Change Password</p>
+          {/* ── NEW: Forgot password link ── */}
+          <button
+            type="button"
+            onClick={() => { setShowResetConfirm(true); setResetMsg(null); }}
+            className="text-xs text-purple-600 hover:text-purple-800 font-medium transition"
+          >
+            Forgot password?
+          </button>
+        </div>
+
+        {/* ── NEW: reset result message ── */}
+        {resetMsg && <Alert type={resetMsg.type} msg={resetMsg.text}/>}
+
         {pwMsg && <Alert type={pwMsg.type} msg={pwMsg.text}/>}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
