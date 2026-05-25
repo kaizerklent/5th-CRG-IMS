@@ -1,4 +1,5 @@
 'use client';
+import * as XLSX from 'xlsx';
 import { useState, useEffect } from 'react';
 import { BorrowRequest } from '@/lib/types/inventory';
 import { useSystemSettings } from '@/lib/hooks/useSystemSettings';
@@ -331,32 +332,30 @@ export default function ReturnedTab({ requests, loading }: ReturnedTabProps) {
     });
   }
 
-  function downloadCSV(rows: any[][], filename: string) {
+  function downloadXLSX(rows: any[][], filename: string) {
     const headers = [
       'Ref ID', 'Borrower', 'Department', 'Contact', 'Items',
       'Inventory No.', 'Serial No.', 'Borrow Date', 'Due Date',
       'Returned At', 'Condition', 'Notes', 'Photo Count',
-      'Verification Type',        // ← NEW
-      'Verified Serial Numbers',  // ← NEW
-      'Verify Photo Count',       // ← NEW
+      'Verification Type',
+      'Verified Serial Numbers',
+      'Verify Photo Count',
     ];
-    const csv = [headers, ...rows]
-      .map(row => row.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = filename;
-    a.click();
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    ws['!cols'] = headers.map(() => ({ wch: 22 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Returned Items');
+    XLSX.writeFile(wb, filename);
   }
 
   function exportFiltered() {
     const today = new Date().toISOString().split('T')[0];
-    downloadCSV(buildCSVRows(filtered), `returned-filtered-${today}.csv`);
+    downloadXLSX(buildCSVRows(filtered), `returned-filtered-${today}.xlsx`);
   }
 
   function exportAll() {
     const today = new Date().toISOString().split('T')[0];
-    downloadCSV(buildCSVRows(requests), `returned-ALL-${today}.csv`);
+    downloadXLSX(buildCSVRows(requests), `returned-ALL-${today}.xlsx`);
   }
 
   function toggleNotes(id: string) {
@@ -456,7 +455,7 @@ export default function ReturnedTab({ requests, loading }: ReturnedTabProps) {
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
               </svg>
-              Export CSV
+              Export Excel
             </button>
           )}
         </div>

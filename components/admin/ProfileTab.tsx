@@ -1,4 +1,5 @@
 'use client';
+import * as XLSX from 'xlsx';
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/firebase/AuthContext';
 import { updateDisplayName, changePassword } from '@/lib/firebase/auth';
@@ -380,6 +381,7 @@ function AuditLogSection() {
   const [logs, setLogs]       = useState<AdminHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter]   = useState<'all' | 'add' | 'update' | 'delete' | 'vendorReturn'>('all');
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     const q = query(collection(db, 'adminHistory'), orderBy('timestamp', 'desc'), limit(100));
@@ -401,9 +403,58 @@ function AuditLogSection() {
     });
   }
 
+  function actionLabel(a: string): string {
+    if (a === 'vendorReturn') return 'Vendor Return';
+    return a.charAt(0).toUpperCase() + a.slice(1);
+  }
+
+  function exportAuditLog() {
+    setExporting(true);
+    try {
+      const headers = ['Action', 'Item Name', 'Details', 'Performed By', 'Date & Time'];
+      const rows = filtered.map(log => [
+        actionLabel(log.action),
+        log.itemName || '—',
+        log.details  || '—',
+        log.adminName || '—',
+        fmtTs(log.timestamp),
+      ]);
+
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+
+      // Column widths
+      ws['!cols'] = [
+        { wch: 16 },  // Action
+        { wch: 30 },  // Item Name
+        { wch: 55 },  // Details
+        { wch: 22 },  // Performed By
+        { wch: 24 },  // Date & Time
+      ];
+
+      // Style header row bold (SheetJS CE supports basic cell props)
+      const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+      for (let col = range.s.c; col <= range.e.c; col++) {
+        const cellAddr = XLSX.utils.encode_cell({ r: 0, c: col });
+        if (ws[cellAddr]) {
+          ws[cellAddr].s = { font: { bold: true } };
+        }
+      }
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Audit Log');
+
+      const today = new Date().toISOString().split('T')[0];
+      const suffix = filter !== 'all' ? `-${filter}` : '';
+      XLSX.writeFile(wb, `audit-log${suffix}-${today}.xlsx`);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div className="pt-4 space-y-4">
-      <div className="flex gap-2 flex-wrap">
+      {/* Filter row + Export button */}
+      <div className="flex gap-2 flex-wrap items-center">
         {(['all', 'add', 'update', 'delete', 'vendorReturn'] as const).map(f => (
           <button key={f} onClick={() => setFilter(f)}
             className={`px-3 py-1.5 rounded-full text-xs font-semibold capitalize transition
@@ -414,10 +465,32 @@ function AuditLogSection() {
                   : f === 'delete'     ? 'bg-red-600 text-white'
                   : 'bg-orange-500 text-white'
                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-            {f === 'all' ? 'All Actions' : f === 'vendorReturn' ? 'Vendor Return' : f}
+            {f === 'all' ? 'All Actions' : actionLabel(f)}
           </button>
         ))}
-        <span className="ml-auto text-xs text-gray-400 self-center">Last 100 actions</span>
+
+        <div className="ml-auto flex items-center gap-3">
+          <span className="text-xs text-gray-400">
+            {loading ? '…' : `${filtered.length} of ${logs.length} records`}
+          </span>
+          {/* Export Excel button */}
+          <button
+            onClick={exportAuditLog}
+            disabled={loading || exporting || filtered.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-700 hover:bg-purple-800 disabled:bg-gray-300 disabled:text-gray-500 text-white text-xs font-semibold rounded-lg transition"
+          >
+            {exporting ? (
+              <><Spinner sm/> Exporting...</>
+            ) : (
+              <>
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                </svg>
+                Export Excel
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
@@ -445,12 +518,18 @@ function AuditLogSection() {
                 </div>
               </div>
               <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0 capitalize ${style.bg} ${style.text}`}>
-                {log.action === 'vendorReturn' ? 'Vendor Return' : log.action}
+                {actionLabel(log.action)}
               </span>
             </div>
           );
         })}
       </div>
+
+      {filtered.length > 0 && !loading && (
+        <p className="text-xs text-gray-400 text-center">
+          Exporting downloads the current filtered view ({filtered.length} record{filtered.length !== 1 ? 's' : ''}).
+        </p>
+      )}
     </div>
   );
 }
@@ -470,21 +549,19 @@ function DataExportSection() {
     return () => { u1(); u2(); };
   }, []);
 
-  function downloadCSV(filename: string, rows: string[][], headers: string[]) {
-    const csv = [headers, ...rows]
-      .map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = filename;
-    a.click();
+  function downloadXLSX(filename: string, rows: string[][], headers: string[]) {
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    ws['!cols'] = headers.map(() => ({ wch: 22 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Export');
+    XLSX.writeFile(wb, filename);
   }
 
   async function exportInventory() {
     setExporting('inventory');
     try {
-      downloadCSV(
-        `inventory-export-${new Date().toISOString().split('T')[0]}.csv`,
+      downloadXLSX(
+        `inventory-export-${new Date().toISOString().split('T')[0]}.xlsx`,
         inventory.map(i => [
           i.name, i.category, i.isUnique ? 'Unique' : 'Bulk', String(i.quantity),
           i.condition, i.status, i.inventoryNumber, i.serialNumber,
@@ -510,8 +587,8 @@ function DataExportSection() {
         const d = ts?.toDate ? ts.toDate() : new Date(ts);
         return d.toISOString().split('T')[0];
       };
-      downloadCSV(
-        `borrows-${key}-${new Date().toISOString().split('T')[0]}.csv`,
+      downloadXLSX(
+        `borrows-${key}-${new Date().toISOString().split('T')[0]}.xlsx`,
         data.map(r => [
           r.borrowerName, r.borrowerDepartment, r.borrowerContact,
           r.items.map(i => i.itemName).join(' | '),
@@ -598,7 +675,7 @@ function DataExportSection() {
                       <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
                       </svg>
-                      Export CSV
+                      Export Excel
                     </>
                 }
               </button>
