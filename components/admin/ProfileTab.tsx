@@ -93,7 +93,6 @@ function InventoryCategoriesSection() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
 
-  // ── NEW: confirmation state ──
   const [confirmCat, setConfirmCat] = useState<CustomCategory | null>(null);
 
   useEffect(() => {
@@ -127,7 +126,6 @@ function InventoryCategoriesSection() {
     finally { setAdding(false); }
   }
 
-  // ── requestDelete: show warning modal or block with error ──
   function requestDelete(cat: CustomCategory) {
     if (cat.name === 'Other') {
       setDeleteErr('"Other" is a protected category and cannot be deleted.');
@@ -140,7 +138,6 @@ function InventoryCategoriesSection() {
       setTimeout(() => setDeleteErr(null), 5000);
       return;
     }
-    // Safe to delete — show confirmation
     setConfirmCat(cat);
     setDeleteErr(null);
   }
@@ -159,7 +156,6 @@ function InventoryCategoriesSection() {
   return (
     <div className="space-y-4 pt-4">
 
-      {/* ── Delete Confirmation Modal ── */}
       {confirmCat && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4"
           role="dialog" aria-modal="true" aria-label="Delete category confirmation">
@@ -177,22 +173,13 @@ function InventoryCategoriesSection() {
               Inventory or Borrow tabs. This cannot be undone.
             </p>
             <div className="flex gap-3">
-              <button
-                onClick={() => setConfirmCat(null)}
-                className="btn-secondary flex-1">
-                Cancel
-              </button>
-              <button
-                onClick={confirmDelete}
-                className="btn-danger flex-1">
-                Delete
-              </button>
+              <button onClick={() => setConfirmCat(null)} className="btn-secondary flex-1">Cancel</button>
+              <button onClick={confirmDelete} className="btn-danger flex-1">Delete</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Add field */}
       <div>
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Add Category</p>
         <div className="flex gap-2">
@@ -219,17 +206,13 @@ function InventoryCategoriesSection() {
         {addSuccess && <p className="text-xs text-green-600 mt-1.5">Category added successfully.</p>}
       </div>
 
-      {/* Error banner */}
       {deleteErr && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{deleteErr}</div>
       )}
 
-      {/* Category list */}
       <div>
         <div className="flex items-center justify-between mb-2">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-            Current Categories
-          </p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Current Categories</p>
           {!loading && (
             <span className="text-xs text-gray-400 font-normal">
               {categories.length} categor{categories.length !== 1 ? 'ies' : 'y'}
@@ -264,21 +247,14 @@ function InventoryCategoriesSection() {
                     <span className="text-xs text-gray-300 font-mono w-5 flex-shrink-0 text-right select-none">
                       {index + 1}
                     </span>
-
                     <p className={`flex-1 text-sm font-medium truncate ${isOther ? 'text-gray-400' : 'text-gray-800'}`}>
                       {cat.name}
-                      {isOther && (
-                        <span className="ml-2 text-xs font-normal text-gray-300">(protected)</span>
-                      )}
+                      {isOther && <span className="ml-2 text-xs font-normal text-gray-300">(protected)</span>}
                     </p>
-
                     <span className={`flex-shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full
-                      ${count > 0
-                        ? 'bg-purple-100 text-purple-700'
-                        : 'bg-gray-100 text-gray-400'}`}>
+                      ${count > 0 ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-400'}`}>
                       {count} {count === 1 ? 'item' : 'items'}
                     </span>
-
                     {isOther ? (
                       <div className="w-7 h-7 flex-shrink-0" title="Protected — cannot be deleted">
                         <svg className="w-4 h-4 text-gray-300 mx-auto mt-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -291,11 +267,7 @@ function InventoryCategoriesSection() {
                         type="button"
                         onClick={() => requestDelete(cat)}
                         disabled={isDeleting || inUse}
-                        title={
-                          inUse
-                            ? `In use by ${count} item${count !== 1 ? 's' : ''} — reassign first`
-                            : `Delete "${cat.name}"`
-                        }
+                        title={inUse ? `In use by ${count} item${count !== 1 ? 's' : ''} — reassign first` : `Delete "${cat.name}"`}
                         className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition
                           ${inUse
                             ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
@@ -305,11 +277,9 @@ function InventoryCategoriesSection() {
                       >
                         {isDeleting
                           ? <Spinner sm />
-                          : (
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          : <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                             </svg>
-                          )
                         }
                       </button>
                     )}
@@ -317,7 +287,6 @@ function InventoryCategoriesSection() {
                 );
               })}
             </div>
-
             <div className="px-4 py-2.5 bg-gray-50 border-t border-gray-100">
               <p className="text-xs text-gray-400">
                 Categories in use (purple badge) cannot be deleted — reassign inventory items first.
@@ -330,6 +299,7 @@ function InventoryCategoriesSection() {
     </div>
   );
 }
+
 // ─── System Settings section ──────────────────────────────────────────────────
 
 function SystemSettingsSection() {
@@ -375,7 +345,6 @@ function SystemSettingsSection() {
     <div className="space-y-6 pt-4">
       {saved && <Alert type="success" msg="Settings saved successfully." />}
 
-      {/* ── Borrow defaults ── */}
       <div>
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Borrow Defaults</p>
         <div className="grid grid-cols-2 gap-4">
@@ -402,7 +371,6 @@ function SystemSettingsSection() {
         </div>
       </div>
 
-      {/* ── Dashboard alerts ── */}
       <div>
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Dashboard Alerts</p>
         <div className="space-y-3">
@@ -426,7 +394,6 @@ function SystemSettingsSection() {
         </div>
       </div>
 
-      {/* ── Table display ── */}
       <div>
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Table Display</p>
         <div>
@@ -442,7 +409,6 @@ function SystemSettingsSection() {
         </div>
       </div>
 
-      {/* ── Vendor Return threshold ── NEW ── */}
       <div className="border-t border-gray-100 pt-5">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Vendor Return</p>
         <div>
@@ -466,7 +432,6 @@ function SystemSettingsSection() {
         </div>
       </div>
 
-      {/* ── Inventory Categories ── */}
       <div className="border-t border-gray-100 pt-5">
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Inventory Categories</p>
         <p className="text-xs text-gray-400 mb-3">
@@ -489,7 +454,7 @@ const ACTION_STYLES: Record<string, { bg: string; text: string; icon: string }> 
   add:          { bg: 'bg-green-100',  text: 'text-green-700',  icon: 'M12 4v16m8-8H4' },
   update:       { bg: 'bg-blue-100',   text: 'text-blue-700',   icon: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z' },
   delete:       { bg: 'bg-red-100',    text: 'text-red-700',    icon: 'M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16' },
-  vendorReturn: { bg: 'bg-orange-100', text: 'text-orange-700', icon: 'M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6' }, // ← NEW
+  vendorReturn: { bg: 'bg-orange-100', text: 'text-orange-700', icon: 'M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6' },
 };
 
 function AuditLogSection() {
@@ -536,23 +501,14 @@ function AuditLogSection() {
       ]);
 
       const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-
-      // Column widths
       ws['!cols'] = [
-        { wch: 16 },  // Action
-        { wch: 30 },  // Item Name
-        { wch: 55 },  // Details
-        { wch: 22 },  // Performed By
-        { wch: 24 },  // Date & Time
+        { wch: 16 }, { wch: 30 }, { wch: 55 }, { wch: 22 }, { wch: 24 },
       ];
 
-      // Style header row bold (SheetJS CE supports basic cell props)
       const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
       for (let col = range.s.c; col <= range.e.c; col++) {
         const cellAddr = XLSX.utils.encode_cell({ r: 0, c: col });
-        if (ws[cellAddr]) {
-          ws[cellAddr].s = { font: { bold: true } };
-        }
+        if (ws[cellAddr]) ws[cellAddr].s = { font: { bold: true } };
       }
 
       const wb = XLSX.utils.book_new();
@@ -568,7 +524,6 @@ function AuditLogSection() {
 
   return (
     <div className="pt-4 space-y-4">
-      {/* Filter row + Export button */}
       <div className="flex gap-2 flex-wrap items-center">
         {(['all', 'add', 'update', 'delete', 'vendorReturn'] as const).map(f => (
           <button key={f} onClick={() => setFilter(f)}
@@ -588,7 +543,6 @@ function AuditLogSection() {
           <span className="text-xs text-gray-400">
             {loading ? '…' : `${filtered.length} of ${logs.length} records`}
           </span>
-          {/* Export Excel button */}
           <button
             onClick={exportAuditLog}
             disabled={loading || exporting || filtered.length === 0}
@@ -681,13 +635,11 @@ function DataExportSection() {
           i.name, i.category, i.isUnique ? 'Unique' : 'Bulk', String(i.quantity),
           i.condition, i.status, i.inventoryNumber, i.serialNumber,
           i.officeOwner, i.dateAcquired, i.inventoryDate, i.notes,
-          i.value != null ? String(i.value) : '',   // ← include value in export
+          i.value != null ? String(i.value) : '',
           i.borrowedBy || '',
         ]),
         ['Name','Category','Asset Type','Quantity','Condition','Status','Inventory No.',
-         'Serial No.','Office Owner','Date Acquired','Inventory Date','Notes',
-         'Value (₱)',   // ← NEW column
-         'Borrowed By'],
+         'Serial No.','Office Owner','Date Acquired','Inventory Date','Notes','Value (₱)','Borrowed By'],
       );
     } finally { setExporting(null); }
   }
@@ -806,15 +758,14 @@ function DataExportSection() {
 // ─── Account Security section ─────────────────────────────────────────────────
 
 function AccountSecuritySection({ user }: { user: any }) {
-  const [sessionStart]           = useState(() => new Date());
-  const [tick, setTick]          = useState(0);
+  const [sessionStart]            = useState(() => new Date());
+  const [tick, setTick]           = useState(0);
   const [verifying, setVerifying] = useState(false);
   const [verifyMsg, setVerifyMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [reloading, setReloading] = useState(false);
   const [reloadMsg, setReloadMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isVerified, setIsVerified] = useState<boolean>(user?.emailVerified ?? false);
 
-  // Live session timer — ticks every 30s
   useEffect(() => {
     const t = setInterval(() => setTick(p => p + 1), 30000);
     return () => clearInterval(t);
@@ -829,8 +780,7 @@ function AccountSecuritySection({ user }: { user: any }) {
 
   const lastSignIn = user?.metadata?.lastSignInTime
     ? new Date(user.metadata.lastSignInTime).toLocaleString('en-PH', {
-        month: 'short', day: 'numeric', year: 'numeric',
-        hour: '2-digit', minute: '2-digit',
+        month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit',
       })
     : '—';
 
@@ -841,11 +791,7 @@ function AccountSecuritySection({ user }: { user: any }) {
     : '—';
 
   const providers     = user?.providerData?.map((p: any) => p.providerId) || [];
-  const providerLabel = providers.includes('password')
-    ? 'Email / Password'
-    : providers.join(', ') || 'Unknown';
-
-  // ── Send verification email ───────────────────────────────────────────────
+  const providerLabel = providers.includes('password') ? 'Email / Password' : providers.join(', ') || 'Unknown';
 
   async function handleSendVerification() {
     setVerifying(true); setVerifyMsg(null);
@@ -853,13 +799,8 @@ function AccountSecuritySection({ user }: { user: any }) {
       const { sendEmailVerification } = await import('firebase/auth');
       const { auth } = await import('@/lib/firebase/firebaseConfig');
       if (!auth.currentUser) throw new Error('No user');
-      await sendEmailVerification(auth.currentUser, {
-        url: window.location.origin, // redirect back after verification
-      });
-      setVerifyMsg({
-        type: 'success',
-        text: `Verification email sent to ${user.email}. Check your inbox (and spam folder).`,
-      });
+      await sendEmailVerification(auth.currentUser, { url: window.location.origin });
+      setVerifyMsg({ type: 'success', text: `Verification email sent to ${user.email}. Check your inbox (and spam folder).` });
     } catch (err: any) {
       const c = err?.code || '';
       if (c === 'auth/too-many-requests') {
@@ -867,12 +808,8 @@ function AccountSecuritySection({ user }: { user: any }) {
       } else {
         setVerifyMsg({ type: 'error', text: 'Failed to send verification email. Please try again.' });
       }
-    } finally {
-      setVerifying(false);
-    }
+    } finally { setVerifying(false); }
   }
-
-  // ── Reload user to check latest verification status ───────────────────────
 
   async function handleReloadUser() {
     setReloading(true); setReloadMsg(null);
@@ -890,9 +827,7 @@ function AccountSecuritySection({ user }: { user: any }) {
       }
     } catch {
       setReloadMsg({ type: 'error', text: 'Failed to refresh status. Please try again.' });
-    } finally {
-      setReloading(false);
-    }
+    } finally { setReloading(false); }
   }
 
   const infoRows = [
@@ -905,18 +840,10 @@ function AccountSecuritySection({ user }: { user: any }) {
 
   return (
     <div className="pt-4 space-y-5">
-
-      {/* ── Email Verification status card ── */}
-      <div className={`rounded-xl border px-4 py-4 ${
-        isVerified
-          ? 'bg-green-50 border-green-200'
-          : 'bg-yellow-50 border-yellow-200'
-      }`}>
+      <div className={`rounded-xl border px-4 py-4 ${isVerified ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200'}`}>
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3">
-            <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
-              isVerified ? 'bg-green-100' : 'bg-yellow-100'
-            }`}>
+            <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${isVerified ? 'bg-green-100' : 'bg-yellow-100'}`}>
               {isVerified ? (
                 <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"/>
@@ -932,85 +859,43 @@ function AccountSecuritySection({ user }: { user: any }) {
                 {isVerified ? 'Email Verified' : 'Email Not Verified'}
               </p>
               <p className={`text-xs mt-0.5 ${isVerified ? 'text-green-600' : 'text-yellow-700'}`}>
-                {isVerified
-                  ? `${user?.email} has been verified.`
-                  : `${user?.email} — verify your email to secure your account.`
-                }
+                {isVerified ? `${user?.email} has been verified.` : `${user?.email} — verify your email to secure your account.`}
               </p>
             </div>
           </div>
 
-          {/* Action buttons on the right */}
           {!isVerified && (
             <div className="flex flex-col gap-2 flex-shrink-0">
-              <button
-                onClick={handleSendVerification}
-                disabled={verifying}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-300 disabled:text-gray-500 text-white text-xs font-semibold rounded-lg transition whitespace-nowrap"
-              >
-                {verifying ? (
-                  <><Spinner sm/> Sending...</>
-                ) : (
-                  <>
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-                    </svg>
-                    Send Verification Email
-                  </>
+              <button onClick={handleSendVerification} disabled={verifying}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-300 disabled:text-gray-500 text-white text-xs font-semibold rounded-lg transition whitespace-nowrap">
+                {verifying ? <><Spinner sm/> Sending...</> : (
+                  <><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>Send Verification Email</>
                 )}
               </button>
-              <button
-                onClick={handleReloadUser}
-                disabled={reloading}
-                className="flex items-center gap-1.5 px-3 py-1.5 border border-yellow-400 bg-white hover:bg-yellow-50 disabled:opacity-50 text-yellow-800 text-xs font-semibold rounded-lg transition whitespace-nowrap"
-              >
-                {reloading ? (
-                  <><Spinner sm/> Checking...</>
-                ) : (
-                  <>
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                    </svg>
-                    I've Verified — Check Status
-                  </>
+              <button onClick={handleReloadUser} disabled={reloading}
+                className="flex items-center gap-1.5 px-3 py-1.5 border border-yellow-400 bg-white hover:bg-yellow-50 disabled:opacity-50 text-yellow-800 text-xs font-semibold rounded-lg transition whitespace-nowrap">
+                {reloading ? <><Spinner sm/> Checking...</> : (
+                  <><svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>I've Verified — Check Status</>
                 )}
               </button>
             </div>
           )}
 
-          {/* Reload button when already verified */}
           {isVerified && (
-            <button
-              onClick={handleReloadUser}
-              disabled={reloading}
-              title="Refresh verification status"
-              className="p-1.5 rounded-lg text-green-600 hover:bg-green-100 transition disabled:opacity-50 flex-shrink-0"
-            >
-              {reloading
-                ? <Spinner sm/>
-                : (
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                  </svg>
-                )
-              }
+            <button onClick={handleReloadUser} disabled={reloading} title="Refresh verification status"
+              className="p-1.5 rounded-lg text-green-600 hover:bg-green-100 transition disabled:opacity-50 flex-shrink-0">
+              {reloading ? <Spinner sm/> : (
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+              )}
             </button>
           )}
         </div>
 
-        {/* Messages below the card content */}
-        {verifyMsg && (
-          <div className="mt-3">
-            <Alert type={verifyMsg.type} msg={verifyMsg.text}/>
-          </div>
-        )}
-        {reloadMsg && (
-          <div className="mt-3">
-            <Alert type={reloadMsg.type} msg={reloadMsg.text}/>
-          </div>
-        )}
+        {verifyMsg && <div className="mt-3"><Alert type={verifyMsg.type} msg={verifyMsg.text}/></div>}
+        {reloadMsg && <div className="mt-3"><Alert type={reloadMsg.type} msg={reloadMsg.text}/></div>}
 
-        {/* Step-by-step guide when unverified */}
         {!isVerified && !verifyMsg && (
           <div className="mt-3 pt-3 border-t border-yellow-200">
             <p className="text-xs font-semibold text-yellow-800 mb-2">How to verify your email:</p>
@@ -1022,9 +907,7 @@ function AccountSecuritySection({ user }: { user: any }) {
                 'Return here and click "I\'ve Verified — Check Status".',
               ].map((step, i) => (
                 <li key={i} className="flex items-start gap-2">
-                  <span className="w-4 h-4 rounded-full bg-yellow-200 text-yellow-800 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
-                    {i + 1}
-                  </span>
+                  <span className="w-4 h-4 rounded-full bg-yellow-200 text-yellow-800 text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">{i + 1}</span>
                   {step}
                 </li>
               ))}
@@ -1033,7 +916,6 @@ function AccountSecuritySection({ user }: { user: any }) {
         )}
       </div>
 
-      {/* ── Account info grid ── */}
       <div className="grid grid-cols-2 gap-3">
         {infoRows.map(row => (
           <div key={row.label} className="bg-gray-50 rounded-lg px-3 py-2.5">
@@ -1045,7 +927,6 @@ function AccountSecuritySection({ user }: { user: any }) {
         ))}
       </div>
 
-      {/* ── Security recommendations ── */}
       <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
         <p className="text-xs font-semibold text-amber-800 mb-2 flex items-center gap-1.5">
           <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
@@ -1080,7 +961,6 @@ function ProfileSection({ user }: { user: any }) {
   const [savingPw, setSavingPw] = useState(false);
   const [pwMsg, setPwMsg]   = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // ── NEW: forgot password ──
   const [sendingReset, setSendingReset] = useState(false);
   const [resetMsg, setResetMsg]         = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -1120,7 +1000,6 @@ function ProfileSection({ user }: { user: any }) {
     } finally { setSavingPw(false); }
   }
 
-  // ── NEW: send password reset email ──
   async function handleForgotPassword() {
     setSendingReset(true); setResetMsg(null); setShowResetConfirm(false);
     try {
@@ -1141,7 +1020,6 @@ function ProfileSection({ user }: { user: any }) {
 
   return (
     <>
-      {/* ── Reset confirmation modal ── */}
       {showResetConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4"
           role="dialog" aria-modal="true" aria-label="Send password reset confirmation">
@@ -1158,31 +1036,18 @@ function ProfileSection({ user }: { user: any }) {
                 <p className="text-xs text-gray-500 mt-0.5">A reset link will be emailed to you</p>
               </div>
             </div>
-
             <div className="bg-gray-50 rounded-xl px-4 py-3 mb-4">
               <p className="text-xs text-gray-500 mb-0.5">Reset link will be sent to</p>
               <p className="text-sm font-medium text-gray-800">{email}</p>
             </div>
-
             <p className="text-sm text-gray-600 mb-5">
               You will receive an email with a link to set a new password.
               Your current password stays active until you complete the reset.
             </p>
-
             <div className="flex gap-3">
-              <button
-                onClick={() => setShowResetConfirm(false)}
-                className="btn-secondary flex-1">
-                Cancel
-              </button>
-              <button
-                onClick={handleForgotPassword}
-                disabled={sendingReset}
-                className="btn-primary flex-1 py-2.5">
-                {sendingReset
-                  ? <><Spinner/> Sending...</>
-                  : 'Send Reset Email'
-                }
+              <button onClick={() => setShowResetConfirm(false)} className="btn-secondary flex-1">Cancel</button>
+              <button onClick={handleForgotPassword} disabled={sendingReset} className="btn-primary flex-1 py-2.5">
+                {sendingReset ? <><Spinner/> Sending...</> : 'Send Reset Email'}
               </button>
             </div>
           </div>
@@ -1224,19 +1089,12 @@ function ProfileSection({ user }: { user: any }) {
       <form onSubmit={handleChangePw} className="space-y-4 pt-6 border-t border-gray-100">
         <div className="flex items-center justify-between">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Change Password</p>
-          {/* ── NEW: Forgot password link ── */}
-          <button
-            type="button"
-            onClick={() => { setShowResetConfirm(true); setResetMsg(null); }}
-            className="text-xs text-purple-600 hover:text-purple-800 font-medium transition"
-          >
+          <button type="button" onClick={() => { setShowResetConfirm(true); setResetMsg(null); }}
+            className="text-xs text-purple-600 hover:text-purple-800 font-medium transition">
             Forgot password?
           </button>
         </div>
-
-        {/* ── NEW: reset result message ── */}
         {resetMsg && <Alert type={resetMsg.type} msg={resetMsg.text}/>}
-
         {pwMsg && <Alert type={pwMsg.type} msg={pwMsg.text}/>}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
@@ -1258,6 +1116,101 @@ function ProfileSection({ user }: { user: any }) {
         </button>
       </form>
     </>
+  );
+}
+
+// ─── Developer Contacts section ───────────────────────────────────────────────
+
+const DEVELOPER_CONTACTS = [
+  {
+    name: 'Ghim Fabian',
+    email: 'ghimybfabian@gmail.com',
+    phone: '+639769921415',
+  },
+  {
+    name: 'Ivanne Obediente',
+    email: 'ivanne.obediente09@gmail.com',
+    phone: '+63 991 725 3616',
+  },
+  {
+    name: 'Keshier Jan Pialan',
+    email: 'keshierjanpilan@gmail.com',
+    phone: '+63566932152',
+  },
+  {
+    name: 'Kaizer klent Auceran',
+    email: 'kaizerklentauceran@gmail.com',
+    phone: '+63 997 416 4343',
+  },
+  {
+    name: 'Ramon Torres',
+    email: 'ramon.torres@placeholder.com',
+    phone: '+63 921 567 8901',
+  },
+];
+
+function DeveloperCard({ dev }: { dev: typeof DEVELOPER_CONTACTS[0] }) {
+  const initials = dev.name
+    .split(' ')
+    .slice(0, 2)
+    .map(w => w[0])
+    .join('')
+    .toUpperCase();
+
+  return (
+    <div className="border border-gray-200 rounded-xl p-4 flex flex-col gap-3 hover:border-purple-300 hover:bg-purple-50/30 transition">
+      {/* Avatar + name */}
+      <div className="flex items-center gap-3">
+        <div className="w-9 h-9 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
+          <span className="text-xs font-bold text-purple-700">{initials}</span>
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-gray-800 truncate">{dev.name}</p>
+        </div>
+      </div>
+
+      {/* Contact links */}
+      <div className="space-y-1.5">
+        <a href={`mailto:${dev.email}`}
+          className="flex items-center gap-2 text-xs text-gray-600 hover:text-purple-700 transition group"
+          title={dev.email}>
+          <svg className="w-3.5 h-3.5 text-gray-400 group-hover:text-purple-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+          </svg>
+          <span className="truncate">{dev.email}</span>
+        </a>
+
+        <a href={`tel:${dev.phone.replace(/\s/g, '')}`}
+          className="flex items-center gap-2 text-xs text-gray-600 hover:text-purple-700 transition group"
+          title={dev.phone}>
+          <svg className="w-3.5 h-3.5 text-gray-400 group-hover:text-purple-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>
+          </svg>
+          <span>{dev.phone}</span>
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function DeveloperContactsSection() {
+  const firstRow  = DEVELOPER_CONTACTS.slice(0, 3);
+  const secondRow = DEVELOPER_CONTACTS.slice(3);
+
+  return (
+    <div className="pt-4 space-y-3">
+      <p className="text-xs text-gray-400">
+        Reach out to the development team for technical support or system-related concerns.
+      </p>
+      {/* Row 1 — 3 cards */}
+      <div className="grid grid-cols-3 gap-3">
+        {firstRow.map(dev => <DeveloperCard key={dev.email} dev={dev}/>)}
+      </div>
+      {/* Row 2 — 2 cards, left-aligned (third column intentionally empty) */}
+      <div className="grid grid-cols-3 gap-3">
+        {secondRow.map(dev => <DeveloperCard key={dev.email} dev={dev}/>)}
+      </div>
+    </div>
   );
 }
 
@@ -1309,6 +1262,14 @@ export default function ProfileTab() {
         defaultOpen={false}
       >
         <AuditLogSection/>
+      </SectionCard>
+
+      <SectionCard
+        title="Developer Contacts"
+        icon="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"
+        defaultOpen={false}
+      >
+        <DeveloperContactsSection/>
       </SectionCard>
     </div>
   );

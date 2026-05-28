@@ -58,11 +58,8 @@ function PropertySticker({ item }: { item: InventoryItem }) {
     }}>
       <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', opacity: 0.05, backgroundImage: 'repeating-linear-gradient(45deg, white 0px, white 1px, transparent 1px, transparent 10px)' }}/>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, gap: 8 }}>
-        <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(255,255,255,0.18)', border: '1.5px solid rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5" aria-hidden="true">
-            <circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 3" strokeLinecap="round" strokeLinejoin="round"/>
-            <path d="M3.6 9h16.8M3.6 15h16.8" strokeLinecap="round" opacity="0.5"/>
-          </svg>
+        <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'rgba(255,255,255,0.18)', border: '1.5px solid rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}>
+          <img src="/logo/639041159_928934899785899_6548860578269527636_n.png" alt="5CRG logo" style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: '50%' }}/>
         </div>
         <div style={{ textAlign: 'center', flex: 1 }}>
           <p style={{ color: 'rgba(255,255,255,0.8)', fontSize: 7, letterSpacing: '1.4px', textTransform: 'uppercase', margin: '0 0 1px' }}>5th Civil Relations Group</p>
