@@ -2,7 +2,7 @@ import {
   collection, doc, addDoc, updateDoc, deleteDoc,
   onSnapshot, query, where, orderBy, serverTimestamp,
   writeBatch, increment, Unsubscribe, DocumentData, QuerySnapshot,
-  getDoc, getDocs,
+  getDoc, getDocs, arrayUnion, arrayRemove,
 } from 'firebase/firestore';
 import { db } from './firebaseConfig';
 import {
@@ -16,7 +16,7 @@ import {
   VendorReturn,
 } from '../types/inventory';
 
-// ─── Snapshot helpers ────────────────────────────────────────────────────────
+// ─── Snapshot helpers ─────────────────────────────────────────────────────────
 
 const toInventory = (s: QuerySnapshot<DocumentData>): InventoryItem[] =>
   s.docs.map(d => ({ id: d.id, ...d.data() } as InventoryItem));
@@ -24,7 +24,7 @@ const toInventory = (s: QuerySnapshot<DocumentData>): InventoryItem[] =>
 const toBorrowRequests = (s: QuerySnapshot<DocumentData>): BorrowRequest[] =>
   s.docs.map(d => ({ id: d.id, ...d.data() } as BorrowRequest));
 
-// ─── Inventory subscriptions ─────────────────────────────────────────────────
+// ─── Inventory subscriptions ──────────────────────────────────────────────────
 
 export function subscribeInventory(cb: (items: InventoryItem[]) => void): Unsubscribe {
   return onSnapshot(
@@ -40,7 +40,7 @@ export function subscribeAvailableInventory(cb: (items: InventoryItem[]) => void
   );
 }
 
-// ─── Borrow request subscriptions ────────────────────────────────────────────
+// ─── Borrow request subscriptions ─────────────────────────────────────────────
 
 export function subscribeActiveBorrows(cb: (reqs: BorrowRequest[]) => void): Unsubscribe {
   return onSnapshot(
@@ -77,23 +77,23 @@ export function subscribeVehicleExpenses(
   cb: (expenses: VehicleExpense[]) => void
 ): Unsubscribe {
   const q = vehicleId
-    ? query(
-        collection(db, 'vehicleExpenses'),
-        where('vehicleId', '==', vehicleId),
-        orderBy('date', 'desc')
-      )
+    ? query(collection(db, 'vehicleExpenses'), where('vehicleId', '==', vehicleId), orderBy('date', 'desc'))
     : query(collection(db, 'vehicleExpenses'), orderBy('date', 'desc'));
   return onSnapshot(q, s =>
     cb(s.docs.map(d => ({ id: d.id, ...d.data() } as VehicleExpense)))
   );
 }
 
-// ─── Category subscriptions & writes ─────────────────────────────────────────
+// ─── Category subscriptions & writes ──────────────────────────────────────────
 
 export function subscribeCategories(cb: (cats: CustomCategory[]) => void): Unsubscribe {
   return onSnapshot(
     query(collection(db, 'categories'), orderBy('name', 'asc')),
-    s => cb(s.docs.map(d => ({ id: d.id, ...d.data() } as CustomCategory)))
+    s => cb(s.docs.map(d => ({
+      ...d.data(),
+      id: d.id,
+      subCategories: d.data().subCategories || [],   // ← safe default for old docs without this field
+    } as CustomCategory)))
   );
 }
 
@@ -101,6 +101,7 @@ export async function addCategory(name: string, adminName: string): Promise<stri
   const trimmed = name.trim();
   const ref = await addDoc(collection(db, 'categories'), {
     name: trimmed,
+    subCategories: [],             // ← initialise empty
     createdAt: serverTimestamp(),
   });
   await logHistory({
@@ -111,6 +112,23 @@ export async function addCategory(name: string, adminName: string): Promise<stri
     details: `Added inventory category: "${trimmed}"`,
   });
   return ref.id;
+}
+
+export async function updateCategory(
+  id: string,
+  oldName: string,
+  newName: string,
+  adminName: string
+): Promise<void> {
+  const trimmed = newName.trim();
+  await updateDoc(doc(db, 'categories', id), { name: trimmed });
+  await logHistory({
+    action: 'update',
+    itemId: id,
+    itemName: trimmed,
+    adminName,
+    details: `Renamed category: "${oldName}" → "${trimmed}"`,
+  });
 }
 
 export async function deleteCategory(
@@ -128,13 +146,107 @@ export async function deleteCategory(
   });
 }
 
-// ─── Admin history ────────────────────────────────────────────────────────────
+// ─── Sub-category writes ──────────────────────────────────────────────────────
+
+export async function addSubCategory(
+  categoryId: string,
+  categoryName: string,
+  subName: string,
+  adminName: string
+): Promise<void> {
+  const trimmed = subName.trim();
+  await updateDoc(doc(db, 'categories', categoryId), {
+    subCategories: arrayUnion(trimmed),
+  });
+  await logHistory({
+    action: 'update',
+    itemId: categoryId,
+    itemName: categoryName,
+    adminName,
+    details: `Added sub-category "${trimmed}" under "${categoryName}"`,
+  });
+}
+
+export async function deleteSubCategory(
+  categoryId: string,
+  categoryName: string,
+  subName: string,
+  adminName: string
+): Promise<void> {
+  await updateDoc(doc(db, 'categories', categoryId), {
+    subCategories: arrayRemove(subName),
+  });
+  await logHistory({
+    action: 'update',
+    itemId: categoryId,
+    itemName: categoryName,
+    adminName,
+    details: `Deleted sub-category "${subName}" from "${categoryName}"`,
+  });
+}
+
+export async function renameSubCategory(
+  categoryId: string,
+  categoryName: string,
+  oldName: string,
+  newName: string,
+  adminName: string
+): Promise<void> {
+  const trimmed = newName.trim();
+  // Firestore has no atomic array-element rename — remove old, add new
+  const batch = writeBatch(db);
+  const ref = doc(db, 'categories', categoryId);
+  batch.update(ref, { subCategories: arrayRemove(oldName) });
+  batch.update(ref, { subCategories: arrayUnion(trimmed) });
+  await batch.commit();
+  await logHistory({
+    action: 'update',
+    itemId: categoryId,
+    itemName: categoryName,
+    adminName,
+    details: `Renamed sub-category "${oldName}" → "${trimmed}" under "${categoryName}"`,
+  });
+}
+
+// ─── Serial number validation helpers ─────────────────────────────────────────
+
+/**
+ * Strips all characters that are not alphanumeric, spaces, or hyphens.
+ * Use as an onChange sanitizer on serial number inputs.
+ */
+export function sanitizeSerialNumber(value: string): string {
+  return value.replace(/[^a-zA-Z0-9 \-]/g, '');
+}
+
+/**
+ * Checks whether a serial number is already used by another inventory item.
+ * Comparison is case-insensitive. Empty serials are always allowed.
+ *
+ * @param serial      The serial to check
+ * @param excludeId   The id of the item being edited (to exclude itself)
+ * @param allItems    Current inventory list (from subscription)
+ */
+export function isSerialDuplicate(
+  serial: string,
+  excludeId: string | null,
+  allItems: InventoryItem[]
+): boolean {
+  if (!serial.trim()) return false;
+  const lower = serial.trim().toLowerCase();
+  return allItems.some(
+    item =>
+      item.id !== excludeId &&
+      item.serialNumber?.trim().toLowerCase() === lower
+  );
+}
+
+// ─── Admin history ─────────────────────────────────────────────────────────────
 
 async function logHistory(entry: Omit<AdminHistory, 'id' | 'timestamp'>): Promise<void> {
   await addDoc(collection(db, 'adminHistory'), { ...entry, timestamp: serverTimestamp() });
 }
 
-// ─── Inventory writes ─────────────────────────────────────────────────────────
+// ─── Inventory writes ──────────────────────────────────────────────────────────
 
 export async function addInventoryItem(
   data: Omit<InventoryItem, 'id' | 'createdAt'>,
@@ -145,6 +257,8 @@ export async function addInventoryItem(
 
   const ref = await addDoc(collection(db, 'inventory'), {
     ...data,
+    isConsumable: data.isConsumable ?? false,
+    subCategory:  data.subCategory ?? '',
     imageUrl,
     imageUrls,
     createdAt: serverTimestamp(),
@@ -152,7 +266,7 @@ export async function addInventoryItem(
 
   await logHistory({
     action: 'add', itemId: ref.id, itemName: data.name, adminName,
-    details: `Added: ${data.name} (${data.inventoryNumber || 'no inv no.'})`,
+    details: `Added: ${data.name} (${data.inventoryNumber || 'no inv no.'})${data.isConsumable ? ' [Consumable]' : ''}`,
   });
   return ref.id;
 }
@@ -296,8 +410,8 @@ export async function submitBorrowRequest(
       throw new Error(`"${s.item.name}" no longer exists in inventory.`);
     }
     const current = snap.data() as InventoryItem;
-    if (current.status === 'Unavailable') {
-      throw new Error(`"${s.item.name}" is no longer available — it may have just been borrowed.`);
+    if (current.status === 'Unavailable' || current.status === 'Out of Stock') {
+      throw new Error(`"${s.item.name}" is no longer available.`);
     }
     if (!current.isUnique && current.quantity < s.quantity) {
       throw new Error(
@@ -311,12 +425,14 @@ export async function submitBorrowRequest(
   const borrowRef = doc(collection(db, 'borrowRequests'));
 
   const items: BorrowedItem[] = selectedItems.map(s => ({
-    itemId: s.item.id,
-    itemName: s.item.name,
-    category: s.item.category,
+    itemId:          s.item.id,
+    itemName:        s.item.name,
+    category:        s.item.category,
+    subCategory:     s.item.subCategory ?? '',
     inventoryNumber: s.item.inventoryNumber,
-    serialNumber: s.item.serialNumber,
-    quantity: s.quantity,
+    serialNumber:    s.item.serialNumber,
+    quantity:        s.quantity,
+    isConsumable:    s.item.isConsumable ?? false,
   }));
 
   batch.set(borrowRef, {
@@ -325,7 +441,6 @@ export async function submitBorrowRequest(
     status: 'Approved', createdAt: serverTimestamp(),
     returnedAt: null, returnCondition: null,
     returnNotes: null, damagePhotoUrl: null, damagePhotoUrls: null,
-    // verification fields start as null — set on return
     verificationPhotoUrls: null,
     verifiedSerialNumbers: null,
     verificationChecklist: null,
@@ -333,35 +448,56 @@ export async function submitBorrowRequest(
 
   for (const s of selectedItems) {
     const invRef = doc(db, 'inventory', s.item.id);
-    if (s.item.isUnique) {
-      batch.update(invRef, {
-        quantity: 0, status: 'Unavailable',
-        borrowedBy: borrowerName, borrowRequestId: borrowRef.id,
-      });
-    } else {
+
+    if (s.item.isConsumable) {
+      // ── Consumable: quantity goes down permanently ───────────────────────
       const newQty = s.item.quantity - s.quantity;
       batch.update(invRef, {
         quantity: newQty,
-        status: newQty <= 0 ? 'Unavailable' : 'Available',
+        status:   newQty <= 0 ? 'Out of Stock' : 'Available',
+      });
+    } else if (s.item.isUnique) {
+      // ── Unique asset: mark unavailable, track borrower ───────────────────
+      batch.update(invRef, {
+        quantity:        0,
+        status:          'Unavailable',
+        borrowedBy:      borrowerName,
+        borrowRequestId: borrowRef.id,
+      });
+    } else {
+      // ── Bulk: reduce quantity ────────────────────────────────────────────
+      const newQty = s.item.quantity - s.quantity;
+      batch.update(invRef, {
+        quantity: newQty,
+        status:   newQty <= 0 ? 'Unavailable' : 'Available',
       });
     }
   }
 
   await batch.commit();
+
+  // ── Log consume action for consumable items ──────────────────────────────
+  for (const s of selectedItems) {
+    if (s.item.isConsumable) {
+      await logHistory({
+        action:   'consume',
+        itemId:   s.item.id,
+        itemName: s.item.name,
+        adminName: borrowerName,
+        details:  `Consumed ${s.quantity}x "${s.item.name}" by ${borrowerName} (${borrowerDepartment})`,
+      });
+    }
+  }
+
   return borrowRef.id;
 }
 
-// ─── Mark returned ────────────────────────────────────────────────────────────
+// ─── Mark returned ─────────────────────────────────────────────────────────────
 
-/**
- * Verification data passed from the return modal Step 1.
- * All fields are optional — quick returns from the dashboard
- * pass an empty verification object.
- */
 export interface ReturnVerification {
-  verificationPhotoUrls: string[];   // photos of the returned item
-  verifiedSerialNumbers: string[];   // serial numbers confirmed by admin
-  verificationChecklist: boolean;    // true if checklist path was used
+  verificationPhotoUrls: string[];
+  verifiedSerialNumbers: string[];
+  verificationChecklist: boolean;
 }
 
 export async function markReturned(
@@ -369,7 +505,7 @@ export async function markReturned(
   returnCondition: 'Good' | 'Fair' | 'Damaged',
   returnNotes: string,
   damagePhotoUrls: string[],
-  verification: ReturnVerification = {   // ← NEW param with safe default
+  verification: ReturnVerification = {
     verificationPhotoUrls: [],
     verifiedSerialNumbers: [],
     verificationChecklist: false,
@@ -378,13 +514,12 @@ export async function markReturned(
   const batch = writeBatch(db);
 
   batch.update(doc(db, 'borrowRequests', request.id), {
-    status:       'Returned',
-    returnedAt:   serverTimestamp(),
+    status:          'Returned',
+    returnedAt:      serverTimestamp(),
     returnCondition,
-    returnNotes:  returnNotes || null,
+    returnNotes:     returnNotes || null,
     damagePhotoUrl:  damagePhotoUrls[0] ?? null,
     damagePhotoUrls: damagePhotoUrls.length > 0 ? damagePhotoUrls : null,
-    // ── Verification fields ──────────────────────────────────────────────────
     verificationPhotoUrls: verification.verificationPhotoUrls.length > 0
       ? verification.verificationPhotoUrls : null,
     verifiedSerialNumbers: verification.verifiedSerialNumbers.length > 0
@@ -395,13 +530,29 @@ export async function markReturned(
   const isDamaged = returnCondition === 'Damaged';
 
   for (const bi of request.items) {
-    batch.update(doc(db, 'inventory', bi.itemId), {
-      quantity:        increment(bi.quantity),
-      status:          isDamaged ? 'Unavailable' : 'Available',
-      condition:       returnCondition,
-      borrowedBy:      null,
-      borrowRequestId: null,
-    });
+    if (bi.isConsumable) {
+      // ── Consumable: quantity was already permanently reduced on borrow.
+      //    On "return" (e.g. unused portion), restore the returned qty.
+      //    Status: if qty > 0 → Available; else stays Out of Stock.
+      const snap = await getDoc(doc(db, 'inventory', bi.itemId));
+      if (snap.exists()) {
+        const current = snap.data() as InventoryItem;
+        const restored = (current.quantity ?? 0) + bi.quantity;
+        batch.update(doc(db, 'inventory', bi.itemId), {
+          quantity: restored,
+          status:   restored > 0 ? 'Available' : 'Out of Stock',
+        });
+      }
+    } else {
+      // ── Non-consumable: restore quantity as before ───────────────────────
+      batch.update(doc(db, 'inventory', bi.itemId), {
+        quantity:        increment(bi.quantity),
+        status:          isDamaged ? 'Unavailable' : 'Available',
+        condition:       returnCondition,
+        borrowedBy:      null,
+        borrowRequestId: null,
+      });
+    }
   }
 
   await batch.commit();
@@ -440,6 +591,7 @@ export async function submitVendorReturn(
     inventoryNumber: item.inventoryNumber,
     serialNumber:    item.serialNumber,
     category:        item.category,
+    subCategory:     item.subCategory ?? '',
     itemValue:       item.value ?? null,
     vendorName:      data.vendorName,
     vendorContact:   data.vendorContact,
@@ -452,9 +604,7 @@ export async function submitVendorReturn(
     createdAt:       serverTimestamp(),
   });
 
-  // Delete the item from inventory — record is preserved in vendorReturns + adminHistory
   batch.delete(doc(db, 'inventory', item.id));
-
   await batch.commit();
 
   await logHistory({
