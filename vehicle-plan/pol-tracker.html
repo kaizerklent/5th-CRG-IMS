@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Vehicle Tab — 5CRG IMS Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="pol-tracker.css"/>
+</head>
+<body>
+<div class="app">
+
+  <!-- Top bar (mimics 5CRG IMS shell) -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-logo">5CRG</div>
+      <span class="topbar-sep">/</span>
+      <span class="topbar-page">Vehicles</span>
+    </div>
+    <div class="topbar-right">
+      <div class="avatar">A</div>
+    </div>
+  </header>
+
+  <!-- Body -->
+  <div class="body">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <nav class="sidenav">
+        <div class="sidenav-item">Dashboard</div>
+        <div class="sidenav-item">Borrow Item</div>
+        <div class="sidenav-item">Borrowed Items</div>
+        <div class="sidenav-item">Returned Items</div>
+        <div class="sidenav-item">Inventory</div>
+        <div class="sidenav-item active">Vehicles</div>
+        <div class="sidenav-item">History</div>
+        <div class="sidenav-item">Profile</div>
+      </nav>
+    </aside>
+
+    <!-- Main -->
+    <main class="main">
+      <div id="app-root"></div>
+    </main>
+
+  </div>
+</div>
+<script src="pol-tracker.js"></script>
+</body>
+</html>
